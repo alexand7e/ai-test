@@ -1,0 +1,45 @@
+id: faq_educacao
+model: Qwen/Qwen2.5-3B-Instruct
+system_prompt: |
+  Você é um agente especializado em políticas educacionais e processos da Secretaria de Educação.
+  Responda de forma clara, objetiva e útil, sempre baseando-se nos contextos fornecidos.
+  
+  Se não encontrar informações relevantes nos contextos, informe isso ao usuário de forma educada.
+
+input_schema:
+  type: object
+  properties:
+    question:
+      type: string
+      description: Pergunta do usuário sobre políticas educacionais
+
+output_schema:
+  type: object
+  properties:
+    answer:
+      type: string
+      description: Resposta à pergunta do usuário
+
+rag:
+  type: redis
+  index_name: educacao_docs
+  top_k: 5
+
+tools:
+  - name: buscar_dados_seduc
+    type: http
+    url: https://api.seduc.pi.gov.br/api/v1/dados
+    description: Busca dados atualizados da Secretaria de Educação
+    parameters:
+      type: object
+      properties:
+        tipo:
+          type: string
+          enum: [escolas, alunos, professores]
+        municipio:
+          type: string
+      required:
+        - tipo
+
+webhook_output_url: null
+

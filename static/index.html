@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Chat</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>🤖 AI Agent Chat</h2>
+            <div class="agent-selector">
+                <label for="agent-select">Selecione um Agente:</label>
+                <select id="agent-select">
+                    <option value="">Carregando...</option>
+                </select>
+            </div>
+            <div class="settings">
+                <label>
+                    <input type="checkbox" id="stream-toggle" checked>
+                    Streaming (SSE)
+                </label>
+            </div>
+            <div class="info">
+                <p>Status: <span id="status">Desconectado</span></p>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="chat-header">
+                <h3 id="chat-title">Selecione um agente para começar</h3>
+            </div>
+            
+            <div class="chat-messages" id="chat-messages">
+                <div class="message system">
+                    <p>👋 Bem-vindo! Selecione um agente acima para começar a conversar.</p>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="message-input" 
+                        placeholder="Digite sua mensagem..." 
+                        disabled
+                    >
+                    <button id="send-button" disabled>
+                        <span>Enviar</span>
+                    </button>
+                </div>
+                <button id="clear-button" class="clear-btn">Limpar Chat</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
+</body>
+</html>
+

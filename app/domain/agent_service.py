@@ -1,0 +1,146 @@
+from typing import List, Dict, Any, AsyncIterator, Optional
+from app.models import AgentConfig, WebhookMessage, AgentResponse, RAGContext
+from app.domain.rag_service import RAGService
+from app.infrastructure.openai_client import OpenAIClient
+from app.infrastructure.redis_client import RedisClient
+import uuid
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class AgentService:
+    """Serviço de orquestração de agentes"""
+    
+    def __init__(
+        self,
+        redis_client: RedisClient,
+        openai_client: OpenAIClient,
+        rag_service: RAGService
+    ):
+        self.redis = redis_client
+        self.openai = openai_client
+        self.rag = rag_service
+    
+    async def process_message(
+        self,
+        agent_config: AgentConfig,
+        message: WebhookMessage,
+        stream: bool = False,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> AsyncIterator[str]:
+        """Processa uma mensagem com o agente e retorna resposta em stream"""
+        
+        conversation_id = message.conversation_id or str(uuid.uuid4())
+        history = history or []
+        
+        try:
+            # Recupera contextos RAG se configurado (apenas para a última mensagem)
+            contexts: List[RAGContext] = []
+            if agent_config.rag:
+                contexts = await self.rag.retrieve_context(
+                    query=message.text,
+                    agent_config=agent_config
+                )
+            
+            # Constrói conteúdo da mensagem do usuário com RAG (se houver contextos)
+            if contexts:
+                # Se houver RAG, enriquece apenas a última mensagem com contexto
+                # Monta prompt com contextos, mas sem system prompt (já está no início)
+                context_text = "\n\n".join([
+                    f"[Contexto {i+1}]\n{ctx.content}"
+                    for i, ctx in enumerate(contexts)
+                ])
+                
+                user_content = f"""Contextos relevantes:
+{context_text}
+
+Com base nos contextos acima, responda à seguinte pergunta:
+
+Pergunta: {message.text}"""
+            else:
+                user_content = message.text
+            
+            # Prepara mensagens para OpenAI com histórico completo
+            messages = [{"role": "system", "content": agent_config.system_prompt}]
+            
+            # Adiciona histórico de mensagens anteriores
+            for hist_msg in history:
+                if hist_msg.get("role") in ["user", "assistant"]:
+                    messages.append({
+                        "role": hist_msg["role"],
+                        "content": hist_msg.get("content", "")
+                    })
+            
+            # Adiciona a mensagem atual do usuário
+            messages.append({"role": "user", "content": user_content})
+            
+            # Prepara tools se houver
+            tools = None
+            if agent_config.tools:
+                tools = self._prepare_tools(agent_config.tools)
+            
+            # Stream resposta
+            if stream:
+                async for token in self.openai.chat_completion_stream(
+                    messages=messages,
+                    model=agent_config.model,
+                    tools=tools
+                ):
+                    yield token
+            else:
+                response = await self.openai.chat_completion(
+                    messages=messages,
+                    model=agent_config.model,
+                    tools=tools
+                )
+                yield response['content']
+        
+        except Exception as e:
+            logger.error(f"Error processing message: {e}", exc_info=True)
+            yield f"Erro ao processar mensagem: {str(e)}"
+    
+    async def process_message_sync(
+        self,
+        agent_config: AgentConfig,
+        message: WebhookMessage,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> AgentResponse:
+        """Processa uma mensagem de forma síncrona (para worker)"""
+        
+        conversation_id = message.conversation_id or str(uuid.uuid4())
+        response_text = ""
+        
+        async for token in self.process_message(agent_config, message, stream=False, history=history):
+            response_text += token
+        
+        # Recupera contextos para incluir na resposta
+        contexts: List[RAGContext] = []
+        if agent_config.rag:
+            contexts = await self.rag.retrieve_context(
+                query=message.text,
+                agent_config=agent_config
+            )
+        
+        return AgentResponse(
+            agent_id=agent_config.id,
+            conversation_id=conversation_id,
+            response=response_text,
+            contexts=contexts
+        )
+    
+    def _prepare_tools(self, tools: List[Any]) -> List[Dict[str, Any]]:
+        """Prepara tools para function calling da OpenAI"""
+        openai_tools = []
+        for tool in tools:
+            openai_tool = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description or f"Tool: {tool.name}",
+                    "parameters": tool.parameters or {}
+                }
+            }
+            openai_tools.append(openai_tool)
+        return openai_tools
+
