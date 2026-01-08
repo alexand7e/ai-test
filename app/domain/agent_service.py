@@ -85,12 +85,61 @@ Pergunta: {message.text}"""
             
             # Stream resposta
             if stream:
-                async for token in self.openai.chat_completion_stream(
+                tool_calls_received = None
+                async for chunk in self.openai.chat_completion_stream(
                     messages=messages,
                     model=agent_config.model,
                     tools=tools
                 ):
-                    yield token
+                    if chunk.get("type") == "content":
+                        yield chunk["data"]
+                    elif chunk.get("type") == "tool_calls":
+                        tool_calls_received = chunk["data"]
+                
+                # Se houver tool calls, processa
+                if tool_calls_received:
+                    # Adiciona mensagem do assistente
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": tool_calls_received
+                    }
+                    messages.append(assistant_message)
+                    
+                    # Executa cada tool call
+                    for tool_call in tool_calls_received:
+                        function_name = tool_call.get("function", {}).get("name", "")
+                        function_args_str = tool_call.get("function", {}).get("arguments", "{}")
+                        tool_call_id = tool_call.get("id", "")
+                        
+                        try:
+                            function_args = json.loads(function_args_str)
+                        except:
+                            function_args = {}
+                        
+                        # Executa função
+                        if function_name == "query_data" and self.data_analysis:
+                            query_result = await self.execute_data_query(agent_config.id, function_args.get('query', ''))
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": json.dumps(query_result, ensure_ascii=False, default=str)
+                            })
+                        else:
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": json.dumps({"success": False, "error": f"Tool {function_name} not implemented"})
+                            })
+                    
+                    # Faz segunda chamada com resultados das tools e streama resposta final
+                    async for chunk in self.openai.chat_completion_stream(
+                        messages=messages,
+                        model=agent_config.model,
+                        tools=tools
+                    ):
+                        if chunk.get("type") == "content":
+                            yield chunk["data"]
             else:
                 response = await self.openai.chat_completion(
                     messages=messages,

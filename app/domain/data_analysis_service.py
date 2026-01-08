@@ -199,56 +199,76 @@ class DataAnalysisService:
                     # Remove 'df.' do início
                     query = query.strip()[3:].strip()
                 
-                # Executa query de forma segura
+                # Executa query de forma segura usando um dicionário de métodos permitidos
                 try:
-                    # Tenta como query string do pandas
-                    if 'query(' in query_lower or query_lower.startswith('query'):
-                        # Extrai a condição do query()
-                        if '(' in query and ')' in query:
-                            condition = query[query.find('(')+1:query.rfind(')')].strip()
-                            if condition.startswith('"') or condition.startswith("'"):
-                                condition = condition[1:-1]
-                            result = df.query(condition)
-                        else:
-                            result = df
+                    # Cria um namespace seguro com apenas o DataFrame
+                    safe_dict = {'df': df, 'pd': pd}
+                    
+                    # Lista de métodos permitidos do pandas
+                    allowed_methods = [
+                        'head', 'tail', 'describe', 'info', 'columns', 'shape', 
+                        'dtypes', 'isna', 'notna', 'sum', 'mean', 'median', 
+                        'max', 'min', 'std', 'count', 'value_counts', 'groupby',
+                        'sort_values', 'dropna', 'fillna', 'query', 'loc', 'iloc',
+                        'select_dtypes', 'nunique', 'unique', 'sample'
+                    ]
+                    
+                    # Verifica se a query usa apenas métodos permitidos
+                    query_clean = query.strip()
+                    
+                    # Se começar com df., remove
+                    if query_clean.startswith('df.'):
+                        query_clean = query_clean[3:].strip()
+                    
+                    # Extrai o nome do método
+                    method_name = query_clean.split('(')[0].split('[')[0].strip()
+                    
+                    # Se for um método permitido ou uma operação de indexação/filtro
+                    if method_name in allowed_methods or '[' in query_clean or 'query' in query_lower:
+                        # Tenta executar usando eval com namespace seguro
+                        # Remove comandos perigosos antes
+                        if any(cmd in query_lower for cmd in ['import ', 'exec', 'eval', '__', 'globals', 'locals', 'open(']):
+                            return {
+                                "success": False,
+                                "error": "Query contains forbidden operations"
+                            }
+                        
+                        # Executa a query
+                        try:
+                            result = eval(query_clean, {"__builtins__": {}}, safe_dict)
+                        except NameError:
+                            # Se falhar, tenta com df. explícito
+                            try:
+                                result = eval(f"df.{query_clean}", {"__builtins__": {}}, safe_dict)
+                            except:
+                                # Última tentativa: executa como string de query do pandas
+                                if 'query' in query_lower or '[' in query_clean:
+                                    # Tenta como filtro
+                                    if '[' in query_clean and ']' in query_clean:
+                                        # Extrai a condição dentro de []
+                                        condition = query_clean[query_clean.find('[')+1:query_clean.rfind(']')]
+                                        if condition.strip():
+                                            # Tenta executar como df[condition]
+                                            try:
+                                                result = eval(f"df[{condition}]", {"__builtins__": {}}, safe_dict)
+                                            except:
+                                                result = df
+                                        else:
+                                            result = df
+                                    else:
+                                        result = df
+                                else:
+                                    raise
                     else:
-                        # Tenta métodos comuns do pandas de forma segura
-                        if query_lower.startswith('head'):
-                            n = 10
-                            if '(' in query and ')' in query:
-                                try:
-                                    n = int(query[query.find('(')+1:query.rfind(')')])
-                                except:
-                                    pass
-                            result = df.head(n)
-                        elif query_lower.startswith('tail'):
-                            n = 10
-                            if '(' in query and ')' in query:
-                                try:
-                                    n = int(query[query.find('(')+1:query.rfind(')')])
-                                except:
-                                    pass
-                            result = df.tail(n)
-                        elif query_lower.startswith('describe'):
-                            result = df.describe()
-                        elif query_lower.startswith('info'):
-                            result = pd.DataFrame({'info': [str(df.info())]})
-                        elif query_lower.startswith('columns'):
-                            result = pd.DataFrame({'columns': df.columns.tolist()})
-                        elif query_lower.startswith('shape'):
-                            result = pd.DataFrame({'shape': [f"{df.shape[0]} rows, {df.shape[1]} columns"]})
-                        elif '[' in query and ']' in query:
-                            # Tenta indexação segura
-                            # Exemplo: df['coluna'] ou df[df['coluna'] > 10]
-                            # Por segurança, apenas permite operações básicas
-                            result = df
-                        else:
-                            # Fallback: retorna informações básicas
-                            result = df.head(10)
+                        return {
+                            "success": False,
+                            "error": f"Método '{method_name}' não permitido. Use métodos como: head(), tail(), describe(), query(), etc."
+                        }
+                        
                 except Exception as query_error:
                     return {
                         "success": False,
-                        "error": f"Query execution error: {str(query_error)}. Tente usar métodos como: head(), tail(), describe(), ou filtros como df[df['coluna'] > valor]"
+                        "error": f"Query execution error: {str(query_error)}. Exemplos válidos: 'head(10)', 'describe()', \"query('coluna > 10')\", \"df[df['coluna'] == 'valor']\""
                     }
                 
                 # Converte resultado para formato serializável

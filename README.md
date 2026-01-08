@@ -196,11 +196,27 @@ webhook_output_url: null  # URL para enviar respostas
 
 O sistema suporta RAG usando Redis Stack com busca vetorial. Para usar:
 
-1. Configure `rag` no YAML do agente
+1. Configure `rag` no YAML do agente ou via interface web
 2. Certifique-se de que Redis Stack está rodando
-3. Popule o índice vetorial (isso precisa ser feito externamente por enquanto)
+3. Popule o índice vetorial usando `POST /rag/{index_name}/documents`
 
 **Nota**: A implementação de busca vetorial está simplificada. Para produção, implemente completamente usando RediSearch ou outro store vetorial.
+
+## Análise de Dados
+
+O sistema suporta análise de dados usando pandas. Agentes podem ter arquivos CSV, JSON ou XLSX carregados e executar queries pandas nesses dados.
+
+**Funcionalidades:**
+- Upload de arquivos via interface web ou API
+- Queries pandas executadas automaticamente quando o LLM chama a tool `query_data`
+- Suporte a métodos comuns: head(), tail(), describe(), query(), filtros, etc.
+- Teste de queries via `POST /agents/{agent_id}/data/query`
+
+**Exemplos de queries:**
+- `head(10)` - Primeiras 10 linhas
+- `describe()` - Estatísticas descritivas
+- `query("coluna > 10")` - Filtrar dados
+- `df[df['coluna'] == 'valor']` - Filtro avançado
 
 ## Observabilidade
 
@@ -210,8 +226,22 @@ O sistema suporta RAG usando Redis Stack com busca vetorial. Para usar:
 
 ## Desenvolvimento
 
-### Adicionar Novo Agente
+### Criar Novo Agente
 
+**Via Interface Web:**
+1. Acesse `/create-agent` no navegador
+2. Preencha o formulário com as informações do agente
+3. Configure RAG (base de conhecimento) se necessário
+4. Habilite análise de dados e faça upload de arquivos (CSV, JSON, XLSX)
+5. O agente será salvo automaticamente e estará disponível em `/webhooks/{agent_id}` ou `/webhook/{webhook_name}`
+
+**Via API:**
+1. Envie `POST /agents/create` com os dados do agente
+2. Faça upload de arquivos via `POST /agents/{agent_id}/files` se necessário
+3. Execute `POST /agents/reload` ou reinicie a API
+4. Agente estará disponível em `/webhooks/{agent_id}`
+
+**Via Arquivo YAML:**
 1. Crie arquivo YAML em `agents/`
 2. Execute `POST /agents/reload` ou reinicie a API
 3. Agente estará disponível em `/webhooks/{agent_id}`

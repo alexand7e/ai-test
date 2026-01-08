@@ -33,8 +33,8 @@ class OpenAIClient:
         model: str = "Qwen/Qwen2.5-3B-Instruct",
         temperature: float = 0.7,
         tools: Optional[List[Dict[str, Any]]] = None
-    ) -> AsyncIterator[str]:
-        """Stream de tokens da OpenAI"""
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream de tokens da OpenAI com suporte a tool calls"""
         try:
             stream = await self.client.chat.completions.create(
                 model=model,
@@ -44,9 +44,45 @@ class OpenAIClient:
                 tools=tools
             )
             
+            tool_calls_accumulated = []
+            current_tool_call = None
+            
             async for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                delta = chunk.choices[0].delta
+                
+                # Processa conteúdo
+                if delta.content:
+                    yield {"type": "content", "data": delta.content}
+                
+                # Processa tool calls
+                if delta.tool_calls:
+                    for tool_call_delta in delta.tool_calls:
+                        index = tool_call_delta.index
+                        
+                        # Inicia novo tool call
+                        if index >= len(tool_calls_accumulated):
+                            tool_calls_accumulated.append({
+                                "id": tool_call_delta.id or "",
+                                "type": "function",
+                                "function": {
+                                    "name": "",
+                                    "arguments": ""
+                                }
+                            })
+                        
+                        # Atualiza tool call
+                        if tool_call_delta.id:
+                            tool_calls_accumulated[index]["id"] = tool_call_delta.id
+                        if tool_call_delta.function:
+                            if tool_call_delta.function.name:
+                                tool_calls_accumulated[index]["function"]["name"] = tool_call_delta.function.name
+                            if tool_call_delta.function.arguments:
+                                tool_calls_accumulated[index]["function"]["arguments"] += tool_call_delta.function.arguments
+                
+                # Se chunk.choices[0].finish_reason indica tool calls, retorna todos
+                if chunk.choices[0].finish_reason == "tool_calls":
+                    yield {"type": "tool_calls", "data": tool_calls_accumulated}
+                    
         except Exception as e:
             logger.error(f"Error in chat completion stream: {e}")
             raise

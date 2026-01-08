@@ -271,6 +271,13 @@
                                        accept=".csv,.json,.xlsx,.xls" style="display: none;">
                             </div>
                             <div class="file-list" id="file-list"></div>
+                            <div class="help-text" style="margin-top: 10px;">
+                                <strong>Exemplos de queries:</strong><br>
+                                • head(10) - Primeiras 10 linhas<br>
+                                • describe() - Estatísticas descritivas<br>
+                                • query("coluna > 10") - Filtrar dados<br>
+                                • df[df['coluna'] == 'valor'] - Filtro avançado
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -283,12 +290,18 @@
                         <label for="input-schema">Input Schema (JSON) *</label>
                         <textarea id="input-schema" name="input_schema" class="json-editor" required 
                                   placeholder='{"type": "object", "properties": {"question": {"type": "string"}}}'></textarea>
+                        <div class="help-text">
+                            Exemplo: {"type": "object", "properties": {"question": {"type": "string", "description": "Pergunta do usuário"}}}
+                        </div>
                     </div>
                     
                     <div class="form-group">
                         <label for="output-schema">Output Schema (JSON) *</label>
                         <textarea id="output-schema" name="output_schema" class="json-editor" required 
                                   placeholder='{"type": "object", "properties": {"answer": {"type": "string"}}}'></textarea>
+                        <div class="help-text">
+                            Exemplo: {"type": "object", "properties": {"answer": {"type": "string", "description": "Resposta do agente"}}}
+                        </div>
                     </div>
                 </div>
 

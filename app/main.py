@@ -576,6 +576,69 @@ async def delete_agent_file(agent_id: str, filename: str):
     }
 
 
+@app.post("/agents/{agent_id}/data/query")
+async def test_data_query(agent_id: str, query: str):
+    """Testa uma query de dados para um agente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    if not data_analysis_service:
+        raise HTTPException(status_code=503, detail="Data analysis service not initialized")
+    
+    # Verifica se agente existe
+    agent_config = agent_loader.get_agent(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    # Verifica se análise de dados está habilitada
+    if not agent_config.data_analysis or not agent_config.data_analysis.enabled:
+        raise HTTPException(status_code=400, detail="Data analysis not enabled for this agent")
+    
+    # Carrega arquivos se necessário
+    if agent_config.data_analysis.files:
+        data_analysis_service.load_agent_files(agent_id, agent_config.data_analysis.files)
+    
+    # Executa query
+    result = data_analysis_service.execute_query(agent_id, query)
+    
+    return {
+        "agent_id": agent_id,
+        "query": query,
+        "result": result
+    }
+
+
+@app.get("/agents/{agent_id}/data/info")
+async def get_data_info(agent_id: str):
+    """Obtém informações sobre os dados carregados de um agente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    if not data_analysis_service:
+        raise HTTPException(status_code=503, detail="Data analysis service not initialized")
+    
+    # Verifica se agente existe
+    agent_config = agent_loader.get_agent(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    # Verifica se análise de dados está habilitada
+    if not agent_config.data_analysis or not agent_config.data_analysis.enabled:
+        raise HTTPException(status_code=400, detail="Data analysis not enabled for this agent")
+    
+    # Carrega arquivos se necessário
+    if agent_config.data_analysis.files:
+        data_analysis_service.load_agent_files(agent_id, agent_config.data_analysis.files)
+    
+    # Obtém informações
+    info = data_analysis_service.get_dataframe_info(agent_id)
+    
+    return {
+        "agent_id": agent_id,
+        "info": info
+    }
+
+
 @app.get("/create-agent")
 async def create_agent_page():
     """Serve a página de criação de agentes"""
