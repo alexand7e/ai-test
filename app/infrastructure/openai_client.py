@@ -56,7 +56,8 @@ class OpenAIClient:
         messages: List[Dict[str, str]],
         model: str = "Qwen/Qwen2.5-3B-Instruct",
         temperature: float = 0.7,
-        tools: Optional[List[Dict[str, Any]]] = None
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[str] = None
     ) -> Dict[str, Any]:
         """Completação de chat sem streaming"""
         try:
@@ -64,11 +65,16 @@ class OpenAIClient:
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                tools=tools
+                tools=tools,
+                tool_choice=tool_choice
             )
             
+            message = response.choices[0].message
+            tool_calls = message.tool_calls if hasattr(message, 'tool_calls') and message.tool_calls else None
+            
             return {
-                'content': response.choices[0].message.content,
+                'content': message.content,
+                'tool_calls': tool_calls,
                 'tokens_used': response.usage.total_tokens if response.usage else None
             }
         except Exception as e:

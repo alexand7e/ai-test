@@ -165,8 +165,76 @@ Pergunta: {message.text}"""
                 tools=tools
             )
             
-            response_text = response['content']
-            tokens_used = response.get('tokens_used')
+            # Processa tool calls se houver
+            tool_calls = response.get('tool_calls')
+            if tool_calls:
+                # Adiciona mensagem do assistente com tool calls
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response.get('content'),
+                    "tool_calls": []
+                }
+                
+                # Executa cada tool call
+                for tool_call in tool_calls:
+                    # Converte tool_call para dict se necessário
+                    if hasattr(tool_call, 'function'):
+                        function_name = tool_call.function.name
+                        function_args_str = tool_call.function.arguments
+                        tool_call_id = tool_call.id
+                    else:
+                        # Se já for dict
+                        function_name = tool_call.get('function', {}).get('name', '')
+                        function_args_str = tool_call.get('function', {}).get('arguments', '{}')
+                        tool_call_id = tool_call.get('id', '')
+                    
+                    # Adiciona tool call à mensagem
+                    assistant_message["tool_calls"].append({
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "arguments": function_args_str
+                        }
+                    })
+                    
+                    # Parse dos argumentos
+                    try:
+                        function_args = json.loads(function_args_str)
+                    except:
+                        function_args = {}
+                    
+                    # Executa função
+                    if function_name == "query_data" and self.data_analysis:
+                        query_result = await self.execute_data_query(agent_config.id, function_args.get('query', ''))
+                        # Adiciona resultado como mensagem de tool
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(query_result, ensure_ascii=False, default=str)
+                        })
+                    else:
+                        # Para outras tools, retorna erro
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps({"success": False, "error": f"Tool {function_name} not implemented"})
+                        })
+                
+                # Adiciona mensagem do assistente
+                messages.append(assistant_message)
+                
+                # Faz segunda chamada com resultados das tools
+                final_response = await self.openai.chat_completion(
+                    messages=messages,
+                    model=agent_config.model,
+                    tools=tools
+                )
+                response_text = final_response.get('content', '')
+                tokens_used = (response.get('tokens_used', 0) or 0) + (final_response.get('tokens_used', 0) or 0)
+            else:
+                response_text = response.get('content', '')
+                tokens_used = response.get('tokens_used')
         
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
@@ -232,5 +300,9 @@ Pergunta: {message.text}"""
         if not self.data_analysis:
             return {"success": False, "error": "Data analysis service not available"}
         
-        return self.data_analysis.execute_query(agent_id, query)
+        # Executa de forma síncrona (pandas é síncrono)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, self.data_analysis.execute_query, agent_id, query)
+        return result
 

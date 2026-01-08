@@ -62,6 +62,13 @@ async def lifespan(app: FastAPI):
     metrics_service = MetricsService(redis_client)
     rag_document_service = RAGDocumentService(redis_client, openai_client)
     
+    # Carrega arquivos de análise de dados para agentes existentes
+    agents = agent_loader.list_agents()
+    for agent_id, agent_config in agents.items():
+        if agent_config.data_analysis and agent_config.data_analysis.enabled:
+            if agent_config.data_analysis.files:
+                data_analysis_service.load_agent_files(agent_id, agent_config.data_analysis.files)
+    
     logger.info("Application started successfully")
     
     yield
@@ -273,6 +280,12 @@ async def reload_agent(agent_id: str):
     if not success:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
     
+    # Recarrega arquivos de análise de dados se houver
+    agent_config = agent_loader.get_agent(agent_id)
+    if agent_config and agent_config.data_analysis and agent_config.data_analysis.enabled:
+        if data_analysis_service and agent_config.data_analysis.files:
+            data_analysis_service.load_agent_files(agent_id, agent_config.data_analysis.files)
+    
     return {"status": "reloaded", "agent_id": agent_id}
 
 
@@ -283,6 +296,15 @@ async def reload_all_agents():
         raise HTTPException(status_code=503, detail="Service not initialized")
     
     agent_loader.reload()
+    
+    # Recarrega arquivos de análise de dados para todos os agentes
+    if data_analysis_service:
+        agents = agent_loader.list_agents()
+        for agent_id, agent_config in agents.items():
+            if agent_config.data_analysis and agent_config.data_analysis.enabled:
+                if agent_config.data_analysis.files:
+                    data_analysis_service.load_agent_files(agent_id, agent_config.data_analysis.files)
+    
     return {"status": "reloaded", "count": len(agent_loader.list_agents())}
 
 
