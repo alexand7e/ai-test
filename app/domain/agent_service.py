@@ -109,24 +109,72 @@ Pergunta: {message.text}"""
         """Processa uma mensagem de forma síncrona (para worker)"""
         
         conversation_id = message.conversation_id or str(uuid.uuid4())
-        response_text = ""
+        tokens_used = None
         
-        async for token in self.process_message(agent_config, message, stream=False, history=history):
-            response_text += token
-        
-        # Recupera contextos para incluir na resposta
-        contexts: List[RAGContext] = []
-        if agent_config.rag:
-            contexts = await self.rag.retrieve_context(
-                query=message.text,
-                agent_config=agent_config
+        try:
+            # Recupera contextos RAG se configurado
+            contexts: List[RAGContext] = []
+            if agent_config.rag:
+                contexts = await self.rag.retrieve_context(
+                    query=message.text,
+                    agent_config=agent_config
+                )
+            
+            # Constrói conteúdo da mensagem do usuário com RAG (se houver contextos)
+            if contexts:
+                context_text = "\n\n".join([
+                    f"[Contexto {i+1}]\n{ctx.content}"
+                    for i, ctx in enumerate(contexts)
+                ])
+                
+                user_content = f"""Contextos relevantes:
+{context_text}
+
+Com base nos contextos acima, responda à seguinte pergunta:
+
+Pergunta: {message.text}"""
+            else:
+                user_content = message.text
+            
+            # Prepara mensagens para OpenAI com histórico completo
+            messages = [{"role": "system", "content": agent_config.system_prompt}]
+            
+            # Adiciona histórico de mensagens anteriores
+            for hist_msg in (history or []):
+                if hist_msg.get("role") in ["user", "assistant"]:
+                    messages.append({
+                        "role": hist_msg["role"],
+                        "content": hist_msg.get("content", "")
+                    })
+            
+            # Adiciona a mensagem atual do usuário
+            messages.append({"role": "user", "content": user_content})
+            
+            # Prepara tools se houver
+            tools = None
+            if agent_config.tools:
+                tools = self._prepare_tools(agent_config.tools)
+            
+            # Chama API diretamente para capturar tokens
+            response = await self.openai.chat_completion(
+                messages=messages,
+                model=agent_config.model,
+                tools=tools
             )
+            
+            response_text = response['content']
+            tokens_used = response.get('tokens_used')
+        
+        except Exception as e:
+            logger.error(f"Error processing message: {e}", exc_info=True)
+            response_text = f"Erro ao processar mensagem: {str(e)}"
         
         return AgentResponse(
             agent_id=agent_config.id,
             conversation_id=conversation_id,
             response=response_text,
-            contexts=contexts
+            contexts=contexts if 'contexts' in locals() else [],
+            tokens_used=tokens_used
         )
     
     def _prepare_tools(self, tools: List[Any]) -> List[Dict[str, Any]]:

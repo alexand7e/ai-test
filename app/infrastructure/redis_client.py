@@ -145,19 +145,73 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Error publishing to {channel}: {e}")
     
-    # Vector search (simplified - assumes Redis Stack with RediSearch)
+    # Vector search (improved implementation using document service)
     async def vector_search(self, index_name: str, query_vector: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
-        """Busca vetorial no Redis (requer Redis Stack)"""
+        """Busca vetorial no Redis usando similaridade de cosseno"""
         if not self.client:
             return []
         
         try:
-            # Esta é uma implementação simplificada
-            # Em produção, use redis-py com suporte a RediSearch/Vector Search
-            # Por enquanto, retornamos lista vazia
-            logger.warning("Vector search not fully implemented - requires Redis Stack")
-            return []
+            import json
+            from typing import List as TypingList
+            
+            # Busca todos os documentos do índice
+            index_list_key = f"rag:index:{index_name}:documents"
+            document_ids = await self.client.smembers(index_list_key)
+            
+            if not document_ids:
+                return []
+            
+            results = []
+            
+            # Para cada documento, calcula similaridade
+            for doc_id in list(document_ids):
+                embedding_key = f"rag:embedding:{index_name}:{doc_id}"
+                embedding_data = await self.client.get(embedding_key)
+                
+                if embedding_data:
+                    try:
+                        doc_embedding = json.loads(embedding_data)
+                        similarity = self._cosine_similarity(query_vector, doc_embedding)
+                        
+                        # Busca conteúdo do documento
+                        doc_key = f"rag:doc:{index_name}:{doc_id}"
+                        doc_data = await self.client.hgetall(doc_key)
+                        
+                        if doc_data:
+                            try:
+                                metadata = json.loads(doc_data.get("metadata", "{}"))
+                            except:
+                                metadata = {}
+                            
+                            results.append({
+                                "content": doc_data.get("content", ""),
+                                "score": similarity,
+                                "metadata": metadata
+                            })
+                    except Exception as e:
+                        logger.warning(f"Error processing document {doc_id}: {e}")
+                        continue
+            
+            # Ordena por score e retorna top_k
+            results.sort(key=lambda x: x["score"], reverse=True)
+            return results[:top_k]
+        
         except Exception as e:
-            logger.error(f"Error in vector search: {e}")
+            logger.error(f"Error in vector search: {e}", exc_info=True)
             return []
+    
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calcula similaridade de cosseno entre dois vetores"""
+        if len(vec1) != len(vec2):
+            return 0.0
+        
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        magnitude1 = sum(a * a for a in vec1) ** 0.5
+        magnitude2 = sum(b * b for b in vec2) ** 0.5
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+        
+        return dot_product / (magnitude1 * magnitude2)
 

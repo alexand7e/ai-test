@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Secretaria de IA</title>
+    <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>🤖 Secretaria de IA - Dashboard</h1>
+            <div class="header-actions">
+                <button id="refresh-btn" class="btn btn-primary">🔄 Atualizar</button>
+                <a href="/" class="btn btn-secondary">💬 Chat</a>
+            </div>
+        </header>
+
+        <div class="dashboard-content">
+            <!-- Métricas Globais -->
+            <section class="metrics-section">
+                <h2>📊 Métricas Globais</h2>
+                <div class="metrics-grid" id="global-metrics">
+                    <div class="metric-card">
+                        <div class="metric-label">Total de Mensagens</div>
+                        <div class="metric-value" id="total-messages">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Total de Tokens</div>
+                        <div class="metric-value" id="total-tokens">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Média Tokens/Mensagem</div>
+                        <div class="metric-value" id="avg-tokens">-</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Agentes -->
+            <section class="agents-section">
+                <h2>🤖 Agentes</h2>
+                <div class="agents-grid" id="agents-grid">
+                    <div class="loading">Carregando agentes...</div>
+                </div>
+            </section>
+
+            <!-- Gerenciamento de Documentos RAG -->
+            <section class="rag-section">
+                <h2>📚 Gerenciamento de Documentos RAG</h2>
+                <div class="rag-controls">
+                    <div class="form-group">
+                        <label for="rag-index-select">Índice:</label>
+                        <select id="rag-index-select">
+                            <option value="">Selecione um índice...</option>
+                        </select>
+                        <button id="refresh-rag-btn" class="btn btn-small">🔄</button>
+                    </div>
+                    <div class="form-group">
+                        <button id="add-doc-btn" class="btn btn-primary">➕ Adicionar Documento</button>
+                    </div>
+                </div>
+                <div id="rag-stats" class="rag-stats"></div>
+                <div id="rag-documents" class="rag-documents"></div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Modal para adicionar documento -->
+    <div id="doc-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Adicionar Documento RAG</h3>
+            <form id="doc-form">
+                <div class="form-group">
+                    <label for="doc-index">Índice:</label>
+                    <input type="text" id="doc-index" required>
+                </div>
+                <div class="form-group">
+                    <label for="doc-content">Conteúdo:</label>
+                    <textarea id="doc-content" rows="10" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="doc-metadata">Metadados (JSON opcional):</label>
+                    <textarea id="doc-metadata" rows="5" placeholder='{"source": "manual", "category": "geral"}'></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Adicionar</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/admin.js"></script>
+</body>
+</html>
+

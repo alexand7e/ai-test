@@ -11,6 +11,8 @@ from app.infrastructure.redis_client import RedisClient
 from app.infrastructure.openai_client import OpenAIClient
 from app.domain.rag_service import RAGService
 from app.domain.agent_service import AgentService
+from app.domain.metrics_service import MetricsService
+import time
 
 # Configurar logging
 logging.basicConfig(
@@ -29,6 +31,7 @@ class Worker:
         self.openai = OpenAIClient()
         self.rag_service = RAGService(self.redis, self.openai)
         self.agent_service = AgentService(self.redis, self.openai, self.rag_service)
+        self.metrics_service = MetricsService(self.redis)
         self.running = False
     
     async def start(self):
@@ -78,6 +81,10 @@ class Worker:
         msg_id = job.get('msg_id')
         agent_id = job.get('agent_id')
         
+        start_time = time.time()
+        success = False
+        tokens_used = None
+        
         logger.info(f"Processing job {job_id} for agent {agent_id} (consumer: {consumer_name})")
         
         try:
@@ -102,6 +109,11 @@ class Worker:
                 history=history
             )
             
+            tokens_used = response.tokens_used
+            success = True
+            
+            logger.debug(f"Job {job_id} - Tokens: {tokens_used}, Success: {success}")
+            
             # Envia resposta para webhook de saída se configurado
             webhook_output_url = job.get('webhook_output_url') or agent_config.webhook_output_url
             if webhook_output_url:
@@ -120,8 +132,22 @@ class Worker:
         
         except Exception as e:
             logger.error(f"Error processing job {job_id}: {e}", exc_info=True)
+            success = False
             # Ainda assim, ack o job para não ficar preso (em produção, implementar retry)
             await self.redis.ack_job(msg_id)
+        
+        finally:
+            # Registra métricas
+            if self.metrics_service and 'message' in locals():
+                response_time = time.time() - start_time
+                await self.metrics_service.record_message(
+                    agent_id=agent_id,
+                    user_id=message.user_id,
+                    channel=message.channel.value,
+                    response_time=response_time,
+                    tokens_used=tokens_used,
+                    success=success
+                )
     
     async def send_webhook_response(self, url: str, response: AgentResponse):
         """Envia resposta para webhook de saída"""
