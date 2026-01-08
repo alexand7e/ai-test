@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +9,7 @@ import os
 # from app.middleware.rate_limiter import RateLimiterMiddleware
 
 from app.config import settings
-from app.models import WebhookMessage, MessageChannel
+from app.models import WebhookMessage, MessageChannel, AgentConfig, AgentRAGConfig, DataAnalysisConfig
 from app.agent_loader import AgentLoader
 from app.infrastructure.redis_client import RedisClient
 from app.infrastructure.openai_client import OpenAIClient
@@ -17,9 +17,11 @@ from app.domain.rag_service import RAGService
 from app.domain.agent_service import AgentService
 from app.domain.metrics_service import MetricsService
 from app.domain.rag_document_service import RAGDocumentService
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from app.domain.data_analysis_service import DataAnalysisService
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, List
 import time
+import json
 
 # Configurar logging
 logging.basicConfig(
@@ -35,13 +37,14 @@ openai_client: OpenAIClient = None
 agent_service: AgentService = None
 metrics_service: MetricsService = None
 rag_document_service: RAGDocumentService = None
+data_analysis_service: DataAnalysisService = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gerencia ciclo de vida da aplicação"""
     global agent_loader, redis_client, openai_client, agent_service
-    global metrics_service, rag_document_service
+    global metrics_service, rag_document_service, data_analysis_service
     
     # Startup
     logger.info("Starting application...")
@@ -54,7 +57,8 @@ async def lifespan(app: FastAPI):
     openai_client = OpenAIClient()
     
     rag_service = RAGService(redis_client, openai_client)
-    agent_service = AgentService(redis_client, openai_client, rag_service)
+    data_analysis_service = DataAnalysisService()
+    agent_service = AgentService(redis_client, openai_client, rag_service, data_analysis_service)
     metrics_service = MetricsService(redis_client)
     rag_document_service = RAGDocumentService(redis_client, openai_client)
     
@@ -111,6 +115,21 @@ async def health_check():
         "redis": "connected" if redis_ok else "disconnected",
         "agents_loaded": len(agent_loader.list_agents()) if agent_loader else 0
     }
+
+
+@app.post("/webhook/{webhook_name}")
+async def webhook_entry_by_name(webhook_name: str, request: Request):
+    """Endpoint de webhook usando nome personalizado"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    # Busca agente pelo webhook_name
+    agent_config = agent_loader.get_agent_by_webhook_name(webhook_name)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Webhook {webhook_name} not found")
+    
+    # Redireciona para a lógica do webhook padrão
+    return await webhook_entry(agent_config.id, request)
 
 
 @app.post("/webhooks/{agent_id}")
@@ -355,6 +374,198 @@ async def search_documents(index_name: str, query: str, top_k: int = 5):
 
 
 # ==================== DASHBOARD ====================
+
+# ==================== AGENT CREATION ====================
+
+class AgentCreateRequest(BaseModel):
+    id: str
+    nome: Optional[str] = None
+    model: str = "Qwen/Qwen2.5-3B-Instruct"
+    api_key: Optional[str] = None
+    webhook_name: Optional[str] = None
+    system_prompt: str
+    input_schema: Dict[str, Any]
+    output_schema: Dict[str, Any]
+    rag: Optional[Dict[str, Any]] = None
+    data_analysis: Optional[Dict[str, Any]] = None
+    tools: List[Dict[str, Any]] = Field(default_factory=list)
+    webhook_output_url: Optional[str] = None
+
+
+@app.post("/agents/create")
+async def create_agent(request: AgentCreateRequest):
+    """Cria um novo agente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        # Verifica se agente já existe
+        if agent_loader.get_agent(request.id):
+            raise HTTPException(status_code=400, detail=f"Agent {request.id} already exists")
+        
+        # Constrói configuração RAG se fornecida
+        rag_config = None
+        if request.rag:
+            rag_config = AgentRAGConfig(**request.rag)
+        
+        # Constrói configuração de análise de dados se fornecida
+        data_analysis_config = None
+        if request.data_analysis:
+            data_analysis_config = DataAnalysisConfig(**request.data_analysis)
+        
+        # Constrói tools
+        from app.models import AgentTool
+        tools = [AgentTool(**tool) for tool in request.tools]
+        
+        # Cria configuração do agente
+        agent_config = AgentConfig(
+            id=request.id,
+            nome=request.nome,
+            model=request.model,
+            api_key=request.api_key,
+            webhook_name=request.webhook_name,
+            system_prompt=request.system_prompt,
+            input_schema=request.input_schema,
+            output_schema=request.output_schema,
+            rag=rag_config,
+            data_analysis=data_analysis_config,
+            tools=tools,
+            webhook_output_url=request.webhook_output_url
+        )
+        
+        # Salva agente
+        success = agent_loader.save_agent(agent_config)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save agent")
+        
+        # Carrega arquivos de análise de dados se houver
+        if data_analysis_config and data_analysis_config.enabled and data_analysis_config.files:
+            data_analysis_service.load_agent_files(request.id, data_analysis_config.files)
+        
+        return {
+            "status": "created",
+            "agent_id": request.id,
+            "agent": agent_config.dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating agent: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== AGENT FILES ====================
+
+@app.post("/agents/{agent_id}/files")
+async def upload_agent_file(
+    agent_id: str,
+    file: UploadFile = File(...)
+):
+    """Upload de arquivo para um agente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    if not data_analysis_service:
+        raise HTTPException(status_code=503, detail="Data analysis service not initialized")
+    
+    # Verifica se agente existe
+    agent_config = agent_loader.get_agent(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    try:
+        # Lê conteúdo do arquivo
+        content = await file.read()
+        
+        # Salva arquivo
+        success = data_analysis_service.save_file(agent_id, file.filename, content)
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to save file")
+        
+        # Atualiza configuração do agente se data_analysis estiver habilitado
+        if agent_config.data_analysis and agent_config.data_analysis.enabled:
+            if file.filename not in agent_config.data_analysis.files:
+                agent_config.data_analysis.files.append(file.filename)
+                agent_loader.save_agent(agent_config)
+        
+        return {
+            "status": "uploaded",
+            "filename": file.filename,
+            "agent_id": agent_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/agents/{agent_id}/files")
+async def list_agent_files(agent_id: str):
+    """Lista arquivos de um agente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    if not data_analysis_service:
+        raise HTTPException(status_code=503, detail="Data analysis service not initialized")
+    
+    # Verifica se agente existe
+    agent_config = agent_loader.get_agent(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    files = data_analysis_service.list_files(agent_id)
+    return {
+        "agent_id": agent_id,
+        "files": files,
+        "count": len(files)
+    }
+
+
+@app.delete("/agents/{agent_id}/files/{filename}")
+async def delete_agent_file(agent_id: str, filename: str):
+    """Remove um arquivo de um agente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    if not data_analysis_service:
+        raise HTTPException(status_code=503, detail="Data analysis service not initialized")
+    
+    # Verifica se agente existe
+    agent_config = agent_loader.get_agent(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    success = data_analysis_service.delete_file(agent_id, filename)
+    if not success:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Atualiza configuração do agente
+    if agent_config.data_analysis and filename in agent_config.data_analysis.files:
+        agent_config.data_analysis.files.remove(filename)
+        agent_loader.save_agent(agent_config)
+    
+    return {
+        "status": "deleted",
+        "filename": filename,
+        "agent_id": agent_id
+    }
+
+
+@app.get("/create-agent")
+async def create_agent_page():
+    """Serve a página de criação de agentes"""
+    create_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "static",
+        "create-agent.html"
+    )
+    if os.path.exists(create_path):
+        return FileResponse(create_path)
+    return {"message": "Create agent page not available"}
+
 
 @app.get("/admin")
 async def admin_dashboard():

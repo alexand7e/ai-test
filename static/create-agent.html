@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar Agente - Secretaria de IA</title>
+    <link rel="stylesheet" href="/static/admin.css">
+    <style>
+        .form-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .form-section {
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .form-section:last-child {
+            border-bottom: none;
+        }
+        
+        .form-section h3 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #2d3748;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4a5568;
+        }
+        
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        
+        .form-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+        }
+        
+        .file-upload-area {
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background: #f7fafc;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .file-upload-area:hover {
+            border-color: #4299e1;
+            background: #ebf8ff;
+        }
+        
+        .file-upload-area.dragover {
+            border-color: #4299e1;
+            background: #bee3f8;
+        }
+        
+        .file-list {
+            margin-top: 15px;
+        }
+        
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f7fafc;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .file-item-name {
+            font-weight: 500;
+        }
+        
+        .file-item-remove {
+            color: #e53e3e;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 30px;
+        }
+        
+        .error-message {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .success-message {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .json-editor {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .help-text {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>🤖 Criar Novo Agente</h1>
+            <div class="header-actions">
+                <a href="/admin" class="btn btn-secondary">← Voltar</a>
+            </div>
+        </header>
+
+        <div class="form-container">
+            <div id="error-message" class="error-message"></div>
+            <div id="success-message" class="success-message"></div>
+
+            <form id="agent-form">
+                <!-- Informações Básicas -->
+                <div class="form-section">
+                    <h3>📋 Informações Básicas</h3>
+                    
+                    <div class="form-group">
+                        <label for="agent-id">ID do Agente *</label>
+                        <input type="text" id="agent-id" name="id" required 
+                               pattern="[a-zA-Z0-9_-]+" 
+                               placeholder="ex: meu_agente_01">
+                        <div class="help-text">Apenas letras, números, hífen e underscore</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-nome">Nome do Agente</label>
+                        <input type="text" id="agent-nome" name="nome" 
+                               placeholder="Nome exibido do agente">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-model">Modelo *</label>
+                        <select id="agent-model" name="model" required>
+                            <option value="Qwen/Qwen2.5-3B-Instruct">Qwen/Qwen2.5-3B-Instruct</option>
+                            <option value="gpt-4o-mini">gpt-4o-mini</option>
+                            <option value="gpt-4">gpt-4</option>
+                            <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                        </select>
+                        <div class="help-text">Ou digite um modelo customizado</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-api-key">API Key</label>
+                        <input type="text" id="agent-api-key" name="api_key" 
+                               placeholder="Deixe vazio para usar a API key global">
+                        <div class="help-text">Opcional - usa a API key global se não informado</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-webhook-name">Nome do Webhook</label>
+                        <input type="text" id="agent-webhook-name" name="webhook_name" 
+                               pattern="[a-zA-Z0-9_-]+"
+                               placeholder="ex: meu_webhook">
+                        <div class="help-text">Permite acesso via /webhook/{nome} além de /webhooks/{id}</div>
+                    </div>
+                </div>
+
+                <!-- Prompt do Sistema -->
+                <div class="form-section">
+                    <h3>💬 Prompt do Sistema</h3>
+                    
+                    <div class="form-group">
+                        <label for="agent-prompt">Prompt *</label>
+                        <textarea id="agent-prompt" name="system_prompt" required 
+                                  placeholder="Você é um assistente virtual..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Configuração RAG -->
+                <div class="form-section">
+                    <h3>📚 Base de Conhecimento (RAG)</h3>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="rag-enabled" name="rag_enabled">
+                            <label for="rag-enabled">Habilitar RAG</label>
+                        </div>
+                    </div>
+                    
+                    <div id="rag-config" style="display: none;">
+                        <div class="form-group">
+                            <label for="rag-index-name">Nome do Índice</label>
+                            <input type="text" id="rag-index-name" name="rag_index_name" 
+                                   placeholder="ex: minha_base_conhecimento">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="rag-top-k">Top K</label>
+                            <input type="number" id="rag-top-k" name="rag_top_k" 
+                                   value="5" min="1" max="20">
+                            <div class="help-text">Número de contextos relevantes a recuperar</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Análise de Dados -->
+                <div class="form-section">
+                    <h3>📊 Análise de Dados</h3>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="data-analysis-enabled" name="data_analysis_enabled">
+                            <label for="data-analysis-enabled">Habilitar Análise de Dados</label>
+                        </div>
+                        <div class="help-text">Permite que o agente execute queries em arquivos CSV, JSON e XLSX</div>
+                    </div>
+                    
+                    <div id="data-analysis-config" style="display: none;">
+                        <div class="form-group">
+                            <label>Upload de Arquivos</label>
+                            <div class="file-upload-area" id="file-upload-area">
+                                <p>📁 Arraste arquivos aqui ou clique para selecionar</p>
+                                <p style="font-size: 12px; color: #718096; margin-top: 5px;">
+                                    Formatos suportados: CSV, JSON, XLSX
+                                </p>
+                                <input type="file" id="file-input" multiple 
+                                       accept=".csv,.json,.xlsx,.xls" style="display: none;">
+                            </div>
+                            <div class="file-list" id="file-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Schemas -->
+                <div class="form-section">
+                    <h3>📝 Schemas</h3>
+                    
+                    <div class="form-group">
+                        <label for="input-schema">Input Schema (JSON) *</label>
+                        <textarea id="input-schema" name="input_schema" class="json-editor" required 
+                                  placeholder='{"type": "object", "properties": {"question": {"type": "string"}}}'></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="output-schema">Output Schema (JSON) *</label>
+                        <textarea id="output-schema" name="output_schema" class="json-editor" required 
+                                  placeholder='{"type": "object", "properties": {"answer": {"type": "string"}}}'></textarea>
+                    </div>
+                </div>
+
+                <!-- Ações -->
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="window.location.href='/admin'">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        ✅ Criar Agente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/create-agent.js"></script>
+</body>
+</html>
+

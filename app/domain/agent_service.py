@@ -5,6 +5,7 @@ from app.infrastructure.openai_client import OpenAIClient
 from app.infrastructure.redis_client import RedisClient
 import uuid
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +17,13 @@ class AgentService:
         self,
         redis_client: RedisClient,
         openai_client: OpenAIClient,
-        rag_service: RAGService
+        rag_service: RAGService,
+        data_analysis_service: Optional[Any] = None
     ):
         self.redis = redis_client
         self.openai = openai_client
         self.rag = rag_service
+        self.data_analysis = data_analysis_service
     
     async def process_message(
         self,
@@ -77,8 +80,8 @@ Pergunta: {message.text}"""
             
             # Prepara tools se houver
             tools = None
-            if agent_config.tools:
-                tools = self._prepare_tools(agent_config.tools)
+            if agent_config.tools or (agent_config.data_analysis and agent_config.data_analysis.enabled):
+                tools = self._prepare_tools(agent_config)
             
             # Stream resposta
             if stream:
@@ -152,8 +155,8 @@ Pergunta: {message.text}"""
             
             # Prepara tools se houver
             tools = None
-            if agent_config.tools:
-                tools = self._prepare_tools(agent_config.tools)
+            if agent_config.tools or (agent_config.data_analysis and agent_config.data_analysis.enabled):
+                tools = self._prepare_tools(agent_config)
             
             # Chama API diretamente para capturar tokens
             response = await self.openai.chat_completion(
@@ -177,10 +180,12 @@ Pergunta: {message.text}"""
             tokens_used=tokens_used
         )
     
-    def _prepare_tools(self, tools: List[Any]) -> List[Dict[str, Any]]:
+    def _prepare_tools(self, agent_config: AgentConfig) -> List[Dict[str, Any]]:
         """Prepara tools para function calling da OpenAI"""
         openai_tools = []
-        for tool in tools:
+        
+        # Adiciona tools configuradas do agente
+        for tool in agent_config.tools:
             openai_tool = {
                 "type": "function",
                 "function": {
@@ -190,5 +195,42 @@ Pergunta: {message.text}"""
                 }
             }
             openai_tools.append(openai_tool)
-        return openai_tools
+        
+        # Adiciona tool de análise de dados se habilitada
+        if agent_config.data_analysis and agent_config.data_analysis.enabled and self.data_analysis:
+            # Carrega arquivos se ainda não estiverem carregados
+            if agent_config.data_analysis.files:
+                self.data_analysis.load_agent_files(agent_config.id, agent_config.data_analysis.files)
+            
+            # Obtém informações dos DataFrames
+            df_info = self.data_analysis.get_dataframe_info(agent_config.id)
+            
+            # Cria tool de query
+            data_tool = {
+                "type": "function",
+                "function": {
+                    "name": "query_data",
+                    "description": "Executa queries em dados carregados (CSV, JSON, XLSX) usando pandas. Use esta ferramenta para analisar dados, filtrar, agregar, calcular estatísticas, etc.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": f"Query pandas a ser executada. Dados disponíveis: {json.dumps(df_info, indent=2) if df_info.get('files') else 'Nenhum arquivo carregado'}. Exemplos: 'df.head()', 'df.describe()', 'df[df[\"coluna\"] > 10]', 'df.groupby(\"coluna\").sum()'"
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            }
+            openai_tools.append(data_tool)
+        
+        return openai_tools if openai_tools else None
+    
+    async def execute_data_query(self, agent_id: str, query: str) -> Dict[str, Any]:
+        """Executa uma query de análise de dados"""
+        if not self.data_analysis:
+            return {"success": False, "error": "Data analysis service not available"}
+        
+        return self.data_analysis.execute_query(agent_id, query)
 

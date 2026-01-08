@@ -46,14 +46,25 @@ class AgentTool(BaseModel):
     parameters: Optional[Dict[str, Any]] = None
 
 
+class DataAnalysisConfig(BaseModel):
+    """Configuração de análise de dados para um agente"""
+    enabled: bool = False
+    files: List[str] = Field(default_factory=list)  # Lista de arquivos carregados (CSV, JSON, XLSX)
+    query_engine: str = "pandas"  # Tipo de engine (pandas, etc)
+
+
 class AgentConfig(BaseModel):
     """Configuração completa de um agente"""
     id: str
+    nome: Optional[str] = None  # Nome exibido do agente
     model: str = "Qwen/Qwen2.5-3B-Instruct"
+    api_key: Optional[str] = None  # API key específica do agente (opcional, informativo)
+    webhook_name: Optional[str] = None  # Nome do webhook personalizado para /webhook/{webhook_name}
     system_prompt: str
     input_schema: Dict[str, Any]
     output_schema: Dict[str, Any]
     rag: Optional[AgentRAGConfig] = None
+    data_analysis: Optional[DataAnalysisConfig] = None
     tools: List[AgentTool] = Field(default_factory=list)
     webhook_output_url: Optional[str] = None
 
