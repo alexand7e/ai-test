@@ -53,8 +53,8 @@ cp env.example .env
 
 Edite `.env` (já vem pré-configurado para a API proprietária):
 ```env
-OPENAI_API_KEY=sk-7dsNTpHKhBOzoJTDAo3Nsw
-OPENAI_BASE_URL=https://api.sobdemanda.mandu.piaui.pro/v1
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
 REDIS_HOST=redis
 REDIS_PORT=6379
 ```
