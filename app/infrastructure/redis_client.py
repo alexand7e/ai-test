@@ -152,9 +152,6 @@ class RedisClient:
             return []
         
         try:
-            import json
-            from typing import List as TypingList
-            
             # Busca todos os documentos do índice
             index_list_key = f"rag:index:{index_name}:documents"
             document_ids = await self.client.smembers(index_list_key)
@@ -163,32 +160,39 @@ class RedisClient:
                 return []
             
             results = []
-            
-            # Para cada documento, calcula similaridade
-            for doc_id in list(document_ids):
-                embedding_key = f"rag:embedding:{index_name}:{doc_id}"
-                embedding_data = await self.client.get(embedding_key)
-                
-                if embedding_data:
+
+            doc_ids = list(document_ids)
+            batch_size = 200
+
+            for offset in range(0, len(doc_ids), batch_size):
+                batch = doc_ids[offset:offset + batch_size]
+                pipe = self.client.pipeline()
+                for doc_id in batch:
+                    embedding_key = f"rag:embedding:{index_name}:{doc_id}"
+                    doc_key = f"rag:doc:{index_name}:{doc_id}"
+                    pipe.get(embedding_key)
+                    pipe.hgetall(doc_key)
+                responses = await pipe.execute()
+
+                for i, doc_id in enumerate(batch):
+                    embedding_data = responses[i * 2]
+                    doc_data = responses[i * 2 + 1]
+                    if not embedding_data or not doc_data:
+                        continue
                     try:
                         doc_embedding = json.loads(embedding_data)
                         similarity = self._cosine_similarity(query_vector, doc_embedding)
-                        
-                        # Busca conteúdo do documento
-                        doc_key = f"rag:doc:{index_name}:{doc_id}"
-                        doc_data = await self.client.hgetall(doc_key)
-                        
-                        if doc_data:
-                            try:
-                                metadata = json.loads(doc_data.get("metadata", "{}"))
-                            except:
-                                metadata = {}
-                            
-                            results.append({
+                        try:
+                            metadata = json.loads(doc_data.get("metadata", "{}"))
+                        except Exception:
+                            metadata = {}
+                        results.append(
+                            {
                                 "content": doc_data.get("content", ""),
                                 "score": similarity,
-                                "metadata": metadata
-                            })
+                                "metadata": metadata,
+                            }
+                        )
                     except Exception as e:
                         logger.warning(f"Error processing document {doc_id}: {e}")
                         continue

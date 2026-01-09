@@ -28,6 +28,13 @@ class RAGService:
         top_k = top_k or agent_config.rag.top_k
         
         try:
+            if self.redis.client:
+                index_list_key = f"rag:index:{agent_config.rag.index_name}:documents"
+                doc_count = await self.redis.client.scard(index_list_key)
+                if doc_count == 0:
+                    logger.warning(f"RAG index '{agent_config.rag.index_name}' is empty")
+                    return []
+
             # Gera embedding da query
             query_embedding = await self.openai.get_embedding(query)
             
@@ -47,7 +54,8 @@ class RAGService:
                     metadata=result.get('metadata')
                 ))
             
-            logger.info(f"Retrieved {len(contexts)} contexts for query")
+            best_score = contexts[0].score if contexts else 0.0
+            logger.info(f"Retrieved {len(contexts)} contexts for query (best_score={best_score:.3f})")
             return contexts
         
         except Exception as e:

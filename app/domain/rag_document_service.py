@@ -1,5 +1,6 @@
 """Serviço para gerenciar documentos RAG"""
 from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
 from app.infrastructure.redis_client import RedisClient
 from app.infrastructure.openai_client import OpenAIClient
 import logging
@@ -38,7 +39,7 @@ class RAGDocumentService:
             doc_data = {
                 "content": content,
                 "metadata": json.dumps(metadata or {}),
-                "created_at": json.dumps({"timestamp": str(uuid.uuid4())})  # Simplificado
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
             
             if self.redis.client:

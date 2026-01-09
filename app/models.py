@@ -35,6 +35,9 @@ class AgentRAGConfig(BaseModel):
     type: str = "redis"
     index_name: str
     top_k: int = 5
+    documents_dir: Optional[str] = None
+    chunk_size: int = 1500
+    overlap: int = 300
 
 
 class AgentTool(BaseModel):

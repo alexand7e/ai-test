@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 import os
+from pathlib import Path
 # Rate limiting será implementado se necessário
 # from app.middleware.rate_limiter import RateLimiterMiddleware
 
@@ -17,6 +18,7 @@ from app.domain.rag_service import RAGService
 from app.domain.agent_service import AgentService
 from app.domain.metrics_service import MetricsService
 from app.domain.rag_document_service import RAGDocumentService
+from app.domain.rag_ingestion_service import RAGIngestionService
 from app.domain.data_analysis_service import DataAnalysisService
 from app.middleware.auth_middleware import AuthMiddleware
 from pydantic import BaseModel, Field
@@ -525,6 +527,7 @@ class AgentCreateRequest(BaseModel):
     data_analysis: Optional[Dict[str, Any]] = None
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     webhook_output_url: Optional[str] = None
+    auto_ingest_documents: bool = False
 
 
 @app.post("/agents/create")
@@ -576,6 +579,29 @@ async def create_agent(request: AgentCreateRequest):
         # Carrega arquivos de análise de dados se houver
         if data_analysis_config and data_analysis_config.enabled and data_analysis_config.files:
             data_analysis_service.load_agent_files(request.id, data_analysis_config.files)
+
+        if request.auto_ingest_documents and rag_config and rag_config.documents_dir:
+            async def _run_ingest() -> None:
+                try:
+                    ingestion_service = RAGIngestionService(redis_client, openai_client)
+                    project_root = Path(__file__).parent.parent
+                    target_dir = (project_root / rag_config.documents_dir).resolve()
+                    if project_root.resolve() not in target_dir.parents and target_dir != project_root.resolve():
+                        logger.error("Refusing to ingest documents outside project root")
+                        return
+                    await ingestion_service.ingest_directory(
+                        index_name=rag_config.index_name,
+                        directory=target_dir,
+                        recursive=True,
+                        chunk_size=rag_config.chunk_size,
+                        overlap=rag_config.overlap,
+                        skip_existing=True,
+                    )
+                except Exception as e:
+                    logger.error(f"Error ingesting documents for agent {request.id}: {e}", exc_info=True)
+
+            import asyncio
+            asyncio.create_task(_run_ingest())
         
         return {
             "status": "created",
@@ -588,6 +614,63 @@ async def create_agent(request: AgentCreateRequest):
     except Exception as e:
         logger.error(f"Error creating agent: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class AgentRAGIngestRequest(BaseModel):
+    documents_dir: Optional[str] = None
+    recursive: bool = True
+    chunk_size: Optional[int] = None
+    overlap: Optional[int] = None
+    skip_existing: bool = True
+
+
+@app.post("/agents/{agent_id}/rag/ingest")
+async def ingest_agent_rag(agent_id: str, request: AgentRAGIngestRequest):
+    if not agent_loader or not rag_document_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    agent_config = agent_loader.get_agent(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    if not agent_config.rag:
+        raise HTTPException(status_code=400, detail=f"Agent {agent_id} does not have RAG enabled")
+
+    documents_dir = request.documents_dir or agent_config.rag.documents_dir
+    if not documents_dir:
+        raise HTTPException(status_code=400, detail="documents_dir not provided and not configured on agent")
+
+    project_root = Path(__file__).parent.parent
+    target_dir = (project_root / documents_dir).resolve()
+    if project_root.resolve() not in target_dir.parents and target_dir != project_root.resolve():
+        raise HTTPException(status_code=400, detail="documents_dir must be inside the project directory")
+
+    if not target_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Directory not found: {documents_dir}")
+
+    ingestion_service = RAGIngestionService(redis_client, openai_client)
+    result = await ingestion_service.ingest_directory(
+        index_name=agent_config.rag.index_name,
+        directory=target_dir,
+        recursive=request.recursive,
+        chunk_size=request.chunk_size or agent_config.rag.chunk_size,
+        overlap=request.overlap or agent_config.rag.overlap,
+        skip_existing=request.skip_existing,
+    )
+
+    stats = await rag_document_service.get_index_stats(agent_config.rag.index_name)
+    return {
+        "status": "ok",
+        "agent_id": agent_id,
+        "index_name": agent_config.rag.index_name,
+        "documents_dir": documents_dir,
+        "result": {
+            "files_processed": result.files_processed,
+            "chunks_indexed": result.chunks_indexed,
+            "chunks_skipped": result.chunks_skipped,
+            "errors": result.errors,
+        },
+        "index_stats": stats,
+    }
 
 
 # ==================== AGENT FILES ====================

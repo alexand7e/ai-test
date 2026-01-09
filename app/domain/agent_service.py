@@ -50,10 +50,34 @@ class AgentService:
             if contexts:
                 # Se houver RAG, enriquece apenas a última mensagem com contexto
                 # Monta prompt com contextos, mas sem system prompt (já está no início)
-                context_text = "\n\n".join([
-                    f"[Contexto {i+1}]\n{ctx.content}"
-                    for i, ctx in enumerate(contexts)
-                ])
+                def _format_metadata(md: Optional[Dict[str, Any]]) -> str:
+                    if not md:
+                        return ""
+                    source_file = md.get("source_file") or md.get("source") or ""
+                    chunk_index = md.get("chunk_index")
+                    total_chunks = md.get("total_chunks")
+                    file_type = md.get("file_type") or ""
+                    parts = []
+                    if source_file:
+                        parts.append(f"Fonte: {source_file}")
+                    if chunk_index is not None and total_chunks is not None:
+                        parts.append(f"Chunk: {int(chunk_index) + 1}/{int(total_chunks)}")
+                    if file_type:
+                        parts.append(f"Tipo: {file_type}")
+                    return " | ".join(parts)
+
+                context_text = "\n\n".join(
+                    [
+                        "\n".join(
+                            [
+                                f"[Contexto {i+1}] (score={ctx.score:.3f})",
+                                _format_metadata(ctx.metadata),
+                                ctx.content,
+                            ]
+                        ).strip()
+                        for i, ctx in enumerate(contexts)
+                    ]
+                )
                 
                 user_content = f"""Contextos relevantes:
 {context_text}
@@ -62,7 +86,11 @@ Com base nos contextos acima, responda à seguinte pergunta:
 
 Pergunta: {message.text}"""
             else:
-                user_content = message.text
+                user_content = f"""Nenhum contexto foi recuperado da base de conhecimento (RAG) deste agente.
+
+Pergunta: {message.text}
+
+Instrução: se a resposta depender de documentos internos, informe que não há trechos recuperados e oriente como melhorar a consulta ou acionar a carga de documentos."""
             
             # Prepara mensagens para OpenAI com histórico completo
             messages = [{"role": "system", "content": agent_config.system_prompt}]
@@ -174,10 +202,34 @@ Pergunta: {message.text}"""
             
             # Constrói conteúdo da mensagem do usuário com RAG (se houver contextos)
             if contexts:
-                context_text = "\n\n".join([
-                    f"[Contexto {i+1}]\n{ctx.content}"
-                    for i, ctx in enumerate(contexts)
-                ])
+                def _format_metadata(md: Optional[Dict[str, Any]]) -> str:
+                    if not md:
+                        return ""
+                    source_file = md.get("source_file") or md.get("source") or ""
+                    chunk_index = md.get("chunk_index")
+                    total_chunks = md.get("total_chunks")
+                    file_type = md.get("file_type") or ""
+                    parts = []
+                    if source_file:
+                        parts.append(f"Fonte: {source_file}")
+                    if chunk_index is not None and total_chunks is not None:
+                        parts.append(f"Chunk: {int(chunk_index) + 1}/{int(total_chunks)}")
+                    if file_type:
+                        parts.append(f"Tipo: {file_type}")
+                    return " | ".join(parts)
+
+                context_text = "\n\n".join(
+                    [
+                        "\n".join(
+                            [
+                                f"[Contexto {i+1}] (score={ctx.score:.3f})",
+                                _format_metadata(ctx.metadata),
+                                ctx.content,
+                            ]
+                        ).strip()
+                        for i, ctx in enumerate(contexts)
+                    ]
+                )
                 
                 user_content = f"""Contextos relevantes:
 {context_text}
@@ -186,7 +238,11 @@ Com base nos contextos acima, responda à seguinte pergunta:
 
 Pergunta: {message.text}"""
             else:
-                user_content = message.text
+                user_content = f"""Nenhum contexto foi recuperado da base de conhecimento (RAG) deste agente.
+
+Pergunta: {message.text}
+
+Instrução: se a resposta depender de documentos internos, informe que não há trechos recuperados e oriente como melhorar a consulta ou acionar a carga de documentos."""
             
             # Prepara mensagens para OpenAI com histórico completo
             messages = [{"role": "system", "content": agent_config.system_prompt}]
@@ -354,4 +410,3 @@ Pergunta: {message.text}"""
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, self.data_analysis.execute_query, agent_id, query)
         return result
-
