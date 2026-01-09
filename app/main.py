@@ -664,3 +664,17 @@ async def admin_dashboard():
         return FileResponse(admin_path)
     return {"message": "Admin dashboard not available"}
 
+
+@app.get("/api/models")
+async def get_models():
+    """Retorna lista de modelos disponíveis"""
+    modelos_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "modelos.json"
+    )
+    if os.path.exists(modelos_path):
+        with open(modelos_path, 'r', encoding='utf-8') as f:
+            modelos = json.load(f)
+        return {"models": modelos}
+    return {"models": []}
+

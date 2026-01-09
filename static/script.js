@@ -68,6 +68,80 @@ streamToggle.addEventListener('change', (e) => {
     isStreaming = e.target.checked;
 });
 
+// Renderizar markdown
+function renderMarkdown(text) {
+    if (!text) return '';
+    
+    // Verificar se marked está disponível
+    if (typeof marked !== 'undefined' && marked) {
+        try {
+            // Configurar marked para quebrar linhas e usar GFM
+            if (marked.setOptions) {
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true
+                });
+            }
+            // Usar marked.parse ou marked dependendo da versão
+            const parser = marked.parse || marked;
+            return parser(text);
+        } catch (e) {
+            console.warn('Erro ao usar marked.js, usando fallback:', e);
+        }
+    }
+    
+    // Fallback: converter markdown básico manualmente
+    let html = text;
+    
+    // Processar linha por linha para listas
+    const lines = html.split('\n');
+    const processedLines = [];
+    let inList = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const isListItem = /^[\-\*\+]\s+(.+)$/.test(line);
+        
+        if (isListItem) {
+            if (!inList) {
+                processedLines.push('<ul>');
+                inList = true;
+            }
+            const content = line.replace(/^[\-\*\+]\s+/, '');
+            processedLines.push('<li>' + content + '</li>');
+        } else {
+            if (inList) {
+                processedLines.push('</ul>');
+                inList = false;
+            }
+            processedLines.push(line);
+        }
+    }
+    
+    if (inList) {
+        processedLines.push('</ul>');
+    }
+    
+    html = processedLines.join('\n');
+    
+    // Aplicar outras transformações
+    html = html
+        // Headers (após processar listas)
+        .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+        // Negrito (não dentro de tags HTML)
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        // Itálico (não dentro de tags HTML)
+        .replace(/(?<![*])\*([^*]+)\*(?![*])/g, '<em>$1</em>')
+        // Linha horizontal
+        .replace(/^---$/gm, '<hr>')
+        // Quebras de linha (mas não dentro de tags HTML)
+        .replace(/\n/g, '<br>');
+    
+    return html;
+}
+
 // Adicionar mensagem
 function addMessage(content, type = 'user') {
     // Armazenar no histórico
@@ -82,7 +156,13 @@ function addMessage(content, type = 'user') {
     
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
-    bubble.textContent = content;
+    
+    // Renderizar markdown apenas para mensagens do assistente
+    if (type === 'assistant') {
+        bubble.innerHTML = renderMarkdown(content);
+    } else {
+        bubble.textContent = content;
+    }
     
     const time = document.createElement('div');
     time.className = 'message-time';
@@ -193,12 +273,17 @@ async function sendMessageStreaming(message) {
                             messageDiv.className = 'message assistant';
                             const bubble = document.createElement('div');
                             bubble.className = 'message-bubble';
-                            bubble.textContent = data;
+                            // Armazenar texto puro em um atributo data
+                            bubble.setAttribute('data-text', data);
+                            bubble.innerHTML = renderMarkdown(data);
                             messageDiv.appendChild(bubble);
                             chatMessages.appendChild(messageDiv);
                             assistantMessage = bubble;
                         } else {
-                            assistantMessage.textContent += data;
+                            // Atualizar conteúdo e re-renderizar markdown
+                            const currentText = (assistantMessage.getAttribute('data-text') || '') + data;
+                            assistantMessage.setAttribute('data-text', currentText);
+                            assistantMessage.innerHTML = renderMarkdown(currentText);
                         }
                         scrollToBottom();
                     }
@@ -208,7 +293,8 @@ async function sendMessageStreaming(message) {
 
         // Adicionar timestamp e atualizar histórico
         if (assistantMessage) {
-            const fullResponse = assistantMessage.textContent;
+            // Obter texto puro do atributo data-text ou do conteúdo renderizado
+            const fullResponse = assistantMessage.getAttribute('data-text') || assistantMessage.textContent || assistantMessage.innerText;
             // Atualizar o histórico com a resposta completa
             conversationHistory[conversationHistory.length - 1] = {
                 role: 'assistant',
@@ -314,6 +400,20 @@ clearButton.addEventListener('click', () => {
     } else {
         addSystemMessage('👋 Bem-vindo! Selecione um agente acima para começar a conversar.');
     }
+});
+
+// Verificar se marked.js carregou
+window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if (typeof marked === 'undefined') {
+            console.warn('marked.js não carregou, usando fallback de markdown');
+        } else {
+            console.log('marked.js carregado com sucesso');
+            // Testar renderização
+            const test = renderMarkdown('**teste**');
+            console.log('Teste de renderização:', test);
+        }
+    }, 100);
 });
 
 // Inicializar

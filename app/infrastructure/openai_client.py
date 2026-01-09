@@ -15,7 +15,7 @@ class OpenAIClient:
             base_url=settings.openai_base_url
         )
     
-    async def get_embedding(self, text: str, model: str = "text-embedding-3-small") -> List[float]:
+    async def get_embedding(self, text: str, model: str = "BAAI/bge-m3") -> List[float]:
         """Gera embedding para um texto"""
         try:
             response = await self.client.embeddings.create(

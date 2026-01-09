@@ -1,0 +1,146 @@
+[
+    {
+      "model_id": "Qwen/Qwen2.5-3B-Instruct",
+      "categoria": "SLM (Small Language Model)",
+      "uso_adequado": "Tarefas leves em dispositivos locais (edge computing), chatbots rápidos, resumos simples e seguir instruções gerais com baixa latência.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "Qdrant/bm25",
+      "categoria": "Algoritmo de Recuperação",
+      "uso_adequado": "Busca lexical (baseada em palavras-chave exatas). Ideal para sistemas de busca híbrida em RAG, complementando a busca vetorial.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "soberano-alpha",
+      "categoria": "LLM (Regional - PT-BR)",
+      "uso_adequado": "Geração de texto com foco na cultura e língua brasileira, possivelmente ajustado para contextos administrativos ou jurídicos nacionais.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "nvidia/Orchestrator-8B",
+      "categoria": "LLM (Agente/Roteamento)",
+      "uso_adequado": "Orquestração de agentes de IA, tomada de decisão para chamar ferramentas (function calling) e roteamento de queries para modelos especializados.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "colbert-ir/colbertv2.0",
+      "categoria": "Modelo de Re-ranking/Recuperação",
+      "uso_adequado": "Recuperação semântica de alta precisão (interação tardia). Excelente para reordenar documentos encontrados por uma busca inicial mais simples.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "Qwen/Qwen3-VL-30B-A3B-Thinking",
+      "categoria": "VLM (Vision-Language Model) + Raciocínio",
+      "uso_adequado": "Análise complexa de imagens e diagramas com cadeia de pensamento (CoT). Ideal para OCR complexo, resolver problemas matemáticos visuais ou descrever cenas detalhadas.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "Qwen/Qwen3-30B-A3B",
+      "categoria": "LLM (General Purpose)",
+      "uso_adequado": "Tarefas gerais de NLP de média/alta complexidade, tradução, geração de conteúdo criativo e raciocínio lógico robusto.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "rhasspy/piper-voices",
+      "categoria": "TTS (Text-to-Speech)",
+      "uso_adequado": "Conversão de texto para fala em alta velocidade. Ideal para assistentes de voz locais, acessibilidade e leitura de telas.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+      "categoria": "Modelo Omni-modal",
+      "uso_adequado": "Interação nativa multimodal em tempo real (áudio, vídeo e texto simultâneos). Ideal para assistentes virtuais avançados tipo 'Her'.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "colbert-v2",
+      "categoria": "Modelo de Re-ranking/Recuperação",
+      "uso_adequado": "Versão alternativa ou alias do ColBERTv2.0. Uso para busca semântica granular e recuperação de passagens específicas em grandes corpus.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "TrinHub/Seduc-4.1-3B",
+      "categoria": "SLM (Educacional)",
+      "uso_adequado": "Aplicações educacionais leves, tutoria básica e interação com alunos, provavelmente otimizado para o currículo ou língua portuguesa (contexto Seduc).",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "sentence-transformers/all-MiniLM-L6-v2",
+      "categoria": "Modelo de Embedding",
+      "uso_adequado": "Geração de vetores para busca semântica rápida e clusterização. Muito leve e rápido, ideal para grandes volumes de dados onde a velocidade é crucial.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
+      "categoria": "LLM (Enterprise)",
+      "uso_adequado": "Tarefas empresariais que exigem alta performance em hardware NVIDIA, geração de dados sintéticos e RAG com respostas seguras (guardrails).",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "soberano-alpha-local",
+      "categoria": "LLM (Regional - PT-BR)",
+      "uso_adequado": "Versão otimizada para execução local (on-premise) do modelo Soberano. Ideal para garantir privacidade de dados em tarefas em português.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "google/gemma-3n-E4B-it",
+      "categoria": "SLM (Instruction Tuned)",
+      "uso_adequado": "Assistente geral leve, completamento de código e tarefas de raciocínio simples rodando em hardware de consumo.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    },
+    {
+      "model_id": "BAAI/bge-m3",
+      "categoria": "Modelo de Embedding",
+      "uso_adequado": "Estado da arte em embeddings multilíngues. Suporta queries densas, esparsas e multi-vetoriais. Ideal para buscas complexas e cruzamento de idiomas.",
+      "max_input_tokens": "Unknown",
+      "max_output_tokens": "Unknown",
+      "input_cost_1m_usd": "Unknown",
+      "output_cost_1m_usd": "Unknown"
+    }
+  ]

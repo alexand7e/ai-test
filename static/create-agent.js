@@ -12,6 +12,58 @@ const dataAnalysisEnabled = document.getElementById('data-analysis-enabled');
 const dataAnalysisConfig = document.getElementById('data-analysis-config');
 const errorMessage = document.getElementById('error-message');
 const successMessage = document.getElementById('success-message');
+const modelSelect = document.getElementById('agent-model');
+
+// Carrega modelos ao carregar a página
+async function loadModels() {
+    try {
+        const response = await fetch('/api/models');
+        const data = await response.json();
+        
+        // Limpa opções existentes
+        modelSelect.innerHTML = '';
+        
+        if (data.models && data.models.length > 0) {
+            // Agrupa modelos por categoria
+            const modelsByCategory = {};
+            data.models.forEach(model => {
+                const category = model.categoria || 'Outros';
+                if (!modelsByCategory[category]) {
+                    modelsByCategory[category] = [];
+                }
+                modelsByCategory[category].push(model);
+            });
+            
+            // Cria grupos de opções por categoria
+            Object.keys(modelsByCategory).sort().forEach(category => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = category;
+                
+                modelsByCategory[category].forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.model_id;
+                    option.textContent = `${model.model_id} - ${model.uso_adequado || ''}`;
+                    optgroup.appendChild(option);
+                });
+                
+                modelSelect.appendChild(optgroup);
+            });
+        } else {
+            // Fallback se não houver modelos
+            const option = document.createElement('option');
+            option.value = 'Qwen/Qwen2.5-3B-Instruct';
+            option.textContent = 'Qwen/Qwen2.5-3B-Instruct';
+            modelSelect.appendChild(option);
+        }
+    } catch (error) {
+        console.error('Erro ao carregar modelos:', error);
+        // Fallback em caso de erro
+        modelSelect.innerHTML = '<option value="Qwen/Qwen2.5-3B-Instruct">Qwen/Qwen2.5-3B-Instruct</option>';
+    }
+}
+
+// Carrega modelos quando a página carrega
+document.addEventListener('DOMContentLoaded', loadModels);
 
 // Toggle RAG config
 ragEnabled.addEventListener('change', (e) => {
