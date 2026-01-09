@@ -2,6 +2,7 @@ from openai import AsyncOpenAI
 from typing import AsyncIterator, List, Dict, Any, Optional
 from app.config import settings
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,15 @@ class OpenAIClient:
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url
         )
+
+    def estimate_tokens(self, text: str) -> int:
+        if not text:
+            return 0
+        return max(1, math.ceil(len(text) / 4))
+
+    def estimate_chat_tokens(self, messages: List[Dict[str, str]], completion_text: str) -> int:
+        prompt_text = "\n".join([m.get("content", "") for m in messages if m.get("content")])
+        return self.estimate_tokens(prompt_text) + self.estimate_tokens(completion_text or "")
     
     async def get_embedding(self, text: str, model: str = "BAAI/bge-m3") -> List[float]:
         """Gera embedding para um texto"""
@@ -107,13 +117,15 @@ class OpenAIClient:
             
             message = response.choices[0].message
             tool_calls = message.tool_calls if hasattr(message, 'tool_calls') and message.tool_calls else None
+            tokens_used = response.usage.total_tokens if getattr(response, "usage", None) else None
+            if not tokens_used:
+                tokens_used = self.estimate_chat_tokens(messages, message.content or "")
             
             return {
                 'content': message.content,
                 'tool_calls': tool_calls,
-                'tokens_used': response.usage.total_tokens if response.usage else None
+                'tokens_used': tokens_used
             }
         except Exception as e:
             logger.error(f"Error in chat completion: {e}")
             raise
-

@@ -236,6 +236,7 @@ async def webhook_entry(agent_id: str, request: Request):
     start_time = time.time()
     success = False
     tokens_used = None
+    stream = False
     
     try:
         # Parse do body (assumindo JSON)
@@ -286,27 +287,43 @@ async def webhook_entry(agent_id: str, request: Request):
         
         # Recupera histórico de mensagens (já sanitizado acima)
         
+        def estimate_tokens(text: str) -> int:
+            if not text:
+                return 0
+            return max(1, int((len(text) + 3) / 4))
+
         # Verifica se deve usar streaming
         stream = body.get("stream", False)
         
         if stream:
-            # Stream direto via SSE
-            # Nota: Em streaming, não temos tokens até o final, então não registramos métricas aqui
             async def generate():
-                nonlocal success
+                nonlocal success, tokens_used
+                assistant_text_parts = []
                 try:
                     async for token in agent_service.process_message(
                         agent_config, message, stream=True, history=history
                     ):
+                        if isinstance(token, str) and token:
+                            assistant_text_parts.append(token)
                         yield f"data: {json.dumps(token, ensure_ascii=False)}\n\n"
                     success = True
                 except Exception as e:
                     logger.error(f"Error in stream: {e}", exc_info=True)
                     yield f"data: {json.dumps(f'[ERRO: {str(e)}]', ensure_ascii=False)}\n\n"
                     success = False
+                finally:
+                    if metrics_service and 'message' in locals():
+                        response_time = time.time() - start_time
+                        tokens_used = estimate_tokens(message.text) + estimate_tokens("".join(assistant_text_parts))
+                        await metrics_service.record_message(
+                            agent_id=agent_id,
+                            user_id=message.user_id,
+                            channel=message.channel.value,
+                            response_time=response_time,
+                            tokens_used=tokens_used,
+                            success=success
+                        )
             
-            # Para streaming, não registramos métricas aqui pois não temos tokens
-            # As métricas de streaming podem ser registradas no cliente ou via webhook
             return StreamingResponse(
                 generate(),
                 media_type="text/event-stream",
@@ -338,18 +355,6 @@ async def webhook_entry(agent_id: str, request: Request):
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         success = False
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Registra métricas
-        if metrics_service and not stream:
-            response_time = time.time() - start_time
-            await metrics_service.record_message(
-                agent_id=agent_id,
-                user_id=message.user_id if 'message' in locals() else "unknown",
-                channel=message.channel.value if 'message' in locals() else "web",
-                response_time=response_time,
-                tokens_used=tokens_used,
-                success=success
-            )
 
 
 @app.get("/agents")

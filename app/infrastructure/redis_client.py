@@ -17,12 +17,33 @@ class RedisClient:
     
     async def connect(self):
         """Conecta ao Redis"""
-        self.client = await redis.from_url(
-            f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
-            encoding="utf-8",
-            decode_responses=True
-        )
-        logger.info(f"Connected to Redis at {settings.redis_host}:{settings.redis_port}")
+        candidates = [settings.redis_host]
+        for fallback in ["localhost", "127.0.0.1"]:
+            if fallback not in candidates:
+                candidates.append(fallback)
+
+        last_error: Optional[Exception] = None
+        for host in candidates:
+            client = None
+            try:
+                client = await redis.from_url(
+                    f"redis://{host}:{settings.redis_port}/{settings.redis_db}",
+                    encoding="utf-8",
+                    decode_responses=True
+                )
+                await client.ping()
+                self.client = client
+                logger.info(f"Connected to Redis at {host}:{settings.redis_port}")
+                return
+            except Exception as e:
+                last_error = e
+                try:
+                    if client:
+                        await client.aclose()
+                except Exception:
+                    pass
+
+        raise RuntimeError(f"Failed to connect to Redis (tried: {candidates}): {last_error}")
     
     async def disconnect(self):
         """Desconecta do Redis"""
