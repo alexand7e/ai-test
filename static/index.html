@@ -3,20 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Agent Chat</title>
+    <title>Chat - SIA-Piauí</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/ui/base.css">
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" 
             onerror="console.error('Erro ao carregar marked.js')"></script>
 </head>
 <body>
+    <div id="app-nav"></div>
     <div class="container">
         <div class="sidebar">
-            <h2>🤖 AI Agent Chat</h2>
+            <div class="logo-section">
+                <!-- <img src="/static/logo-sia.svg" alt="SIA-Piauí" class="logo-img" onerror="this.style.display='none'"> -->
+                <h2>Chat</h2>
+            </div>
             <div class="agent-selector">
                 <label for="agent-select">Selecione um Agente:</label>
                 <select id="agent-select">
                     <option value="">Carregando...</option>
                 </select>
+            </div>
+            <div class="conversations-section">
+                <div class="conversations-header">
+                    <h3>Conversas</h3>
+                    <button id="new-conversation-btn" class="new-conv-btn" title="Nova conversa">+</button>
+                </div>
+                <div class="conversations-list" id="conversations-list">
+                    <p class="no-conversations">Nenhuma conversa salva</p>
+                </div>
             </div>
             <div class="settings">
                 <label>
@@ -26,6 +41,7 @@
             </div>
             <div class="info">
                 <p>Status: <span id="status">Desconectado</span></p>
+                <button id="logout-btn" class="logout-btn">Sair</button>
             </div>
         </div>
         
@@ -54,9 +70,15 @@
                 </div>
                 <button id="clear-button" class="clear-btn">Limpar Chat</button>
             </div>
+            
         </div>
     </div>
+    <!-- <div class="disclaimer-wrapper">
+        <p class="disclaimer">Este agente de IA pode cometer erros. Verifique informações importantes.</p>
+    </div> -->
     
+    <script src="/static/ui/utils.js"></script>
+    <script src="/static/ui/nav.js"></script>
     <script src="/static/script.js"></script>
 </body>
 </html>

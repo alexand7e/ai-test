@@ -1,9 +1,12 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = (window.SIAUtils && window.SIAUtils.getApiBaseUrl)
+    ? window.SIAUtils.getApiBaseUrl()
+    : (window.location && window.location.origin ? window.location.origin : 'http://localhost:8000');
 
 let selectedAgent = null;
 let conversationId = null;
 let isStreaming = true;
 let conversationHistory = []; // Histórico de mensagens da conversa
+let conversations = {}; // Todas as conversas salvas
 
 // Elementos DOM
 const agentSelect = document.getElementById('agent-select');
@@ -14,11 +17,274 @@ const chatMessages = document.getElementById('chat-messages');
 const chatTitle = document.getElementById('chat-title');
 const statusSpan = document.getElementById('status');
 const streamToggle = document.getElementById('stream-toggle');
+const conversationsList = document.getElementById('conversations-list');
+const newConversationBtn = document.getElementById('new-conversation-btn');
+const logoutBtn = document.getElementById('logout-btn');
+
+// ==================== SANITIZAÇÃO ====================
+
+// Função para sanitizar inputs
+function sanitizeInput(value) {
+    if (!value) return '';
+    if (typeof value !== 'string') return value.toString();
+    
+    // Remove tags HTML perigosas
+    let sanitized = value
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+        .replace(/javascript:/gi, '')
+        .replace(/on\w+\s*=/gi, '');
+    
+    sanitized = sanitized.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
+    
+    // Limita tamanho
+    if (sanitized.length > 10000) {
+        sanitized = sanitized.substring(0, 10000);
+    }
+    
+    return sanitized.trim();
+}
+
+function sanitizeSseDelta(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value !== 'string') value = value.toString();
+
+    let sanitized = value
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+        .replace(/javascript:/gi, '')
+        .replace(/on\w+\s*=/gi, '');
+
+    sanitized = sanitized.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
+
+    if (sanitized.length > 20000) {
+        sanitized = sanitized.substring(0, 20000);
+    }
+
+    return sanitized;
+}
+
+// ==================== LOCALSTORAGE - CONVERSAS ====================
+
+// Carregar conversas do localStorage
+function loadConversations() {
+    try {
+        const saved = localStorage.getItem('conversations');
+        if (saved) {
+            conversations = JSON.parse(saved);
+        }
+    } catch (error) {
+        console.error('Erro ao carregar conversas:', error);
+        conversations = {};
+    }
+    renderConversationsList();
+}
+
+// Salvar conversas no localStorage
+function saveConversations() {
+    try {
+        localStorage.setItem('conversations', JSON.stringify(conversations));
+    } catch (error) {
+        console.error('Erro ao salvar conversas:', error);
+    }
+}
+
+// Salvar conversa atual
+function saveCurrentConversation() {
+    if (!selectedAgent || !conversationId) return;
+    
+    const key = `${selectedAgent}_${conversationId}`;
+    conversations[key] = {
+        id: conversationId,
+        agent: selectedAgent,
+        title: getConversationTitle(),
+        history: [...conversationHistory],
+        lastMessage: conversationHistory.length > 0 
+            ? conversationHistory[conversationHistory.length - 1].content.substring(0, 50)
+            : 'Nova conversa',
+        timestamp: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+    
+    saveConversations();
+    renderConversationsList();
+}
+
+// Carregar conversa
+function loadConversation(key) {
+    const conv = conversations[key];
+    if (!conv) return;
+    
+    selectedAgent = conv.agent;
+    conversationId = conv.id;
+    conversationHistory = [...conv.history];
+    
+    // Atualizar UI
+    agentSelect.value = selectedAgent;
+    chatTitle.textContent = `Chat: ${selectedAgent}`;
+    messageInput.disabled = false;
+    sendButton.disabled = false;
+    
+    // Limpar e renderizar mensagens
+    chatMessages.innerHTML = '';
+    conv.history.forEach(msg => {
+        if (msg.role === 'user') {
+            addMessage(msg.content, 'user', false);
+        } else if (msg.role === 'assistant') {
+            addMessage(msg.content, 'assistant', false);
+        }
+    });
+    
+    renderConversationsList();
+    scrollToBottom();
+}
+
+// Deletar conversa
+function deleteConversation(key, event) {
+    event.stopPropagation();
+    if (confirm('Tem certeza que deseja excluir esta conversa?')) {
+        delete conversations[key];
+        saveConversations();
+        renderConversationsList();
+        
+        // Se era a conversa atual, limpar
+        if (conversationId && `${selectedAgent}_${conversationId}` === key) {
+            conversationId = null;
+            conversationHistory = [];
+            chatMessages.innerHTML = '';
+            addSystemMessage('Conversa excluída. Selecione um agente para começar uma nova.');
+        }
+    }
+}
+
+// Obter título da conversa
+function getConversationTitle() {
+    if (conversationHistory.length === 0) {
+        return 'Nova conversa';
+    }
+    const firstUserMessage = conversationHistory.find(m => m.role === 'user');
+    if (firstUserMessage) {
+        return sanitizeInput(firstUserMessage.content).substring(0, 40) + '...';
+    }
+    return 'Conversa';
+}
+
+// Renderizar lista de conversas
+function renderConversationsList() {
+    if (!conversationsList) return;
+    
+    const currentKey = selectedAgent && conversationId 
+        ? `${selectedAgent}_${conversationId}` 
+        : null;
+    
+    // Filtrar conversas do agente atual
+    const agentConversations = Object.entries(conversations)
+        .filter(([key]) => !selectedAgent || key.startsWith(selectedAgent + '_'))
+        .sort(([, a], [, b]) => new Date(b.updatedAt) - new Date(a.updatedAt))
+        .slice(0, 20); // Limitar a 20 conversas
+    
+    if (agentConversations.length === 0) {
+        conversationsList.innerHTML = '<p class="no-conversations">Nenhuma conversa salva</p>';
+        return;
+    }
+    
+    conversationsList.innerHTML = '';
+    agentConversations.forEach(([key, conv]) => {
+        const item = document.createElement('div');
+        item.className = `conversation-item ${key === currentKey ? 'active' : ''}`;
+        item.onclick = () => loadConversation(key);
+        
+        const header = document.createElement('div');
+        header.className = 'conversation-item-header';
+        
+        const title = document.createElement('div');
+        title.className = 'conversation-item-title';
+        title.textContent = conv.title || 'Conversa sem título';
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'conversation-item-delete';
+        deleteBtn.innerHTML = '×';
+        deleteBtn.onclick = (e) => deleteConversation(key, e);
+        
+        header.appendChild(title);
+        header.appendChild(deleteBtn);
+        
+        const meta = document.createElement('div');
+        meta.className = 'conversation-item-meta';
+        const date = new Date(conv.updatedAt);
+        meta.innerHTML = `
+            <span>${date.toLocaleDateString('pt-BR')}</span>
+            <span>${conv.history.length} msgs</span>
+        `;
+        
+        item.appendChild(header);
+        item.appendChild(meta);
+        conversationsList.appendChild(item);
+    });
+}
+
+// Nova conversa
+function newConversation() {
+    if (!selectedAgent) {
+        alert('Selecione um agente primeiro');
+        return;
+    }
+    
+    // Salvar conversa atual se houver mensagens
+    if (conversationHistory.length > 0) {
+        saveCurrentConversation();
+    }
+    
+    conversationId = `conv_${Date.now()}`;
+    conversationHistory = [];
+    chatMessages.innerHTML = '';
+    addSystemMessage(`Nova conversa iniciada com "${selectedAgent}"`);
+    renderConversationsList();
+}
+
+// ==================== AUTENTICAÇÃO ====================
+
+// Verificar autenticação
+async function checkAuth() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            window.location.href = '/login';
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error('Erro ao verificar autenticação:', error);
+        window.location.href = '/login';
+        return false;
+    }
+}
+
+// Logout
+async function logout() {
+    try {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+    } catch (error) {
+        console.error('Erro ao fazer logout:', error);
+    }
+    window.location.href = '/login';
+}
+
+// ==================== FUNÇÕES EXISTENTES ====================
 
 // Carregar agentes
 async function loadAgents() {
     try {
-        const response = await fetch(`${API_BASE_URL}/agents`);
+        const response = await fetch(`${API_BASE_URL}/agents`, {
+            credentials: 'include'
+        });
         const data = await response.json();
         
         agentSelect.innerHTML = '<option value="">Selecione um agente...</option>';
@@ -40,58 +306,131 @@ async function loadAgents() {
 
 // Atualizar status
 function updateStatus(status) {
-    statusSpan.textContent = status;
-    statusSpan.style.color = status === 'Conectado' ? '#48bb78' : 
-                            status === 'Desconectado' ? '#f56565' : '#ed8936';
+    if (statusSpan) {
+        statusSpan.textContent = status;
+        statusSpan.style.color = status === 'Conectado' ? '#48bb78' : 
+                                status === 'Desconectado' ? '#f56565' : '#ed8936';
+    }
 }
 
 // Selecionar agente
-agentSelect.addEventListener('change', (e) => {
-    selectedAgent = e.target.value;
-    
-    if (selectedAgent) {
-        chatTitle.textContent = `Chat: ${selectedAgent}`;
-        messageInput.disabled = false;
-        sendButton.disabled = false;
-        conversationId = `conv_${Date.now()}`;
-        conversationHistory = []; // Limpar histórico ao trocar de agente
-        addSystemMessage(`Agente "${selectedAgent}" selecionado. Você pode começar a conversar!`);
-    } else {
-        chatTitle.textContent = 'Selecione um agente para começar';
-        messageInput.disabled = true;
-        sendButton.disabled = true;
-    }
-});
+if (agentSelect) {
+    agentSelect.addEventListener('change', (e) => {
+        selectedAgent = e.target.value;
+        
+        if (selectedAgent) {
+            chatTitle.textContent = `Chat: ${selectedAgent}`;
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            
+            // Salvar conversa anterior se houver
+            if (conversationHistory.length > 0 && conversationId) {
+                saveCurrentConversation();
+            }
+            
+            conversationId = `conv_${Date.now()}`;
+            conversationHistory = [];
+            chatMessages.innerHTML = '';
+            addSystemMessage(`Agente "${selectedAgent}" selecionado. Você pode começar a conversar!`);
+            renderConversationsList();
+        } else {
+            chatTitle.textContent = 'Selecione um agente para começar';
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+        }
+    });
+}
 
 // Toggle streaming
-streamToggle.addEventListener('change', (e) => {
-    isStreaming = e.target.checked;
-});
+if (streamToggle) {
+    streamToggle.addEventListener('change', (e) => {
+        isStreaming = e.target.checked;
+    });
+}
 
 // Renderizar markdown
+let markedConfigured = false;
+
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function isSafeUrl(url) {
+    const value = String(url || '').trim();
+    if (!value) return false;
+    if (value.startsWith('#')) return true;
+    if (value.startsWith('/')) return true;
+    if (value.startsWith('./') || value.startsWith('../')) return true;
+    try {
+        const parsed = new URL(value, window.location.origin);
+        return ['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol);
+    } catch (e) {
+        return false;
+    }
+}
+
+function sanitizeRenderedHtml(html) {
+    const template = document.createElement('template');
+    template.innerHTML = String(html || '');
+    const blocked = new Set(['SCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'STYLE']);
+    const elements = template.content.querySelectorAll('*');
+    elements.forEach((el) => {
+        if (blocked.has(el.tagName)) {
+            el.remove();
+            return;
+        }
+        Array.from(el.attributes).forEach((attr) => {
+            const name = attr.name.toLowerCase();
+            if (name.startsWith('on')) {
+                el.removeAttribute(attr.name);
+                return;
+            }
+            if (name === 'href' || name === 'src') {
+                if (!isSafeUrl(attr.value)) {
+                    el.removeAttribute(attr.name);
+                }
+            }
+        });
+    });
+    return template.innerHTML;
+}
+
+function ensureMarkedConfiguredOnce() {
+    if (markedConfigured) return;
+    if (typeof marked !== 'undefined' && marked && marked.setOptions) {
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false
+        });
+    }
+    markedConfigured = true;
+}
+
 function renderMarkdown(text) {
     if (!text) return '';
     
     // Verificar se marked está disponível
     if (typeof marked !== 'undefined' && marked) {
         try {
-            // Configurar marked para quebrar linhas e usar GFM
-            if (marked.setOptions) {
-                marked.setOptions({
-                    breaks: true,
-                    gfm: true
-                });
-            }
+            ensureMarkedConfiguredOnce();
             // Usar marked.parse ou marked dependendo da versão
             const parser = marked.parse || marked;
-            return parser(text);
+            const html = parser(escapeHtml(text));
+            return sanitizeRenderedHtml(html);
         } catch (e) {
             console.warn('Erro ao usar marked.js, usando fallback:', e);
         }
     }
     
     // Fallback: converter markdown básico manualmente
-    let html = text;
+    let html = escapeHtml(text);
     
     // Processar linha por linha para listas
     const lines = html.split('\n');
@@ -143,13 +482,23 @@ function renderMarkdown(text) {
 }
 
 // Adicionar mensagem
-function addMessage(content, type = 'user') {
+function addMessage(content, type = 'user', save = true) {
+    // Sanitizar conteúdo
+    const sanitizedContent = sanitizeInput(content);
+    
     // Armazenar no histórico
-    conversationHistory.push({
-        role: type === 'user' ? 'user' : 'assistant',
-        content: content,
-        timestamp: new Date().toISOString()
-    });
+    if (save) {
+        conversationHistory.push({
+            role: type === 'user' ? 'user' : 'assistant',
+            content: sanitizedContent,
+            timestamp: new Date().toISOString()
+        });
+        
+        // Salvar conversa periodicamente
+        if (conversationHistory.length % 5 === 0) {
+            saveCurrentConversation();
+        }
+    }
     
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
@@ -159,9 +508,9 @@ function addMessage(content, type = 'user') {
     
     // Renderizar markdown apenas para mensagens do assistente
     if (type === 'assistant') {
-        bubble.innerHTML = renderMarkdown(content);
+        bubble.innerHTML = renderMarkdown(sanitizedContent);
     } else {
-        bubble.textContent = content;
+        bubble.textContent = sanitizedContent;
     }
     
     const time = document.createElement('div');
@@ -186,7 +535,7 @@ function addSystemMessage(content) {
     
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
-    bubble.textContent = content;
+    bubble.textContent = sanitizeInput(content);
     
     messageDiv.appendChild(bubble);
     chatMessages.appendChild(messageDiv);
@@ -221,16 +570,21 @@ function removeTypingIndicator() {
 
 // Scroll para baixo
 function scrollToBottom() {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (chatMessages) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 }
 
 // Enviar mensagem com streaming
 async function sendMessageStreaming(message) {
     try {
+        // Sanitizar mensagem antes de enviar
+        const sanitizedMessage = sanitizeInput(message);
+        
         // Preparar histórico de mensagens (sem incluir a mensagem atual que será adicionada depois)
         const history = conversationHistory.map(msg => ({
             role: msg.role,
-            content: msg.content
+            content: sanitizeInput(msg.content)
         }));
         
         const response = await fetch(`${API_BASE_URL}/webhooks/${selectedAgent}`, {
@@ -238,13 +592,14 @@ async function sendMessageStreaming(message) {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({
                 user_id: 'web_user',
                 channel: 'web',
-                text: message,
+                text: sanitizedMessage,
                 conversation_id: conversationId,
                 stream: true,
-                history: history  // Enviar histórico completo
+                history: history
             })
         });
 
@@ -255,52 +610,97 @@ async function sendMessageStreaming(message) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let assistantMessage = null;
+        let assistantHistoryIndex = null;
+        let buffer = '';
+
+        function ensureAssistantMessage() {
+            if (assistantMessage) return;
+            removeTypingIndicator();
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.setAttribute('data-text', '');
+            bubble.innerHTML = '';
+            messageDiv.appendChild(bubble);
+            chatMessages.appendChild(messageDiv);
+            assistantMessage = bubble;
+
+            assistantHistoryIndex = conversationHistory.length;
+            conversationHistory.push({
+                role: 'assistant',
+                content: '',
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        function appendAssistantText(delta) {
+            const sanitizedDelta = sanitizeSseDelta(delta);
+            if (!sanitizedDelta) return;
+            ensureAssistantMessage();
+            const currentText = (assistantMessage.getAttribute('data-text') || '') + sanitizedDelta;
+            assistantMessage.setAttribute('data-text', currentText);
+            assistantMessage.innerHTML = renderMarkdown(currentText);
+            if (assistantHistoryIndex !== null) {
+                conversationHistory[assistantHistoryIndex] = {
+                    role: 'assistant',
+                    content: sanitizeInput(currentText),
+                    timestamp: new Date().toISOString()
+                };
+            }
+            scrollToBottom();
+        }
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() || '';
 
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data.trim()) {
-                        if (!assistantMessage) {
-                            removeTypingIndicator();
-                            const messageDiv = document.createElement('div');
-                            messageDiv.className = 'message assistant';
-                            const bubble = document.createElement('div');
-                            bubble.className = 'message-bubble';
-                            // Armazenar texto puro em um atributo data
-                            bubble.setAttribute('data-text', data);
-                            bubble.innerHTML = renderMarkdown(data);
-                            messageDiv.appendChild(bubble);
-                            chatMessages.appendChild(messageDiv);
-                            assistantMessage = bubble;
-                        } else {
-                            // Atualizar conteúdo e re-renderizar markdown
-                            const currentText = (assistantMessage.getAttribute('data-text') || '') + data;
-                            assistantMessage.setAttribute('data-text', currentText);
-                            assistantMessage.innerHTML = renderMarkdown(currentText);
+                if (!line) continue;
+                if (line.startsWith('data:')) {
+                    let data = line.slice(5);
+                    if (data.startsWith(' ')) data = data.slice(1);
+                    if (data === '[DONE]') continue;
+                    let decoded = data;
+                    try {
+                        if (decoded && (decoded[0] === '"' || decoded[0] === '{' || decoded[0] === '[')) {
+                            decoded = JSON.parse(decoded);
                         }
-                        scrollToBottom();
+                    } catch (e) {
+                        decoded = data;
                     }
+                    appendAssistantText(decoded);
                 }
             }
         }
 
         // Adicionar timestamp e atualizar histórico
         if (assistantMessage) {
-            // Obter texto puro do atributo data-text ou do conteúdo renderizado
-            const fullResponse = assistantMessage.getAttribute('data-text') || assistantMessage.textContent || assistantMessage.innerText;
-            // Atualizar o histórico com a resposta completa
-            conversationHistory[conversationHistory.length - 1] = {
-                role: 'assistant',
-                content: fullResponse,
-                timestamp: new Date().toISOString()
-            };
+            buffer += decoder.decode();
+            if (buffer) {
+                const tailLines = buffer.split(/\r?\n/);
+                for (const line of tailLines) {
+                    if (!line) continue;
+                    if (line.startsWith('data:')) {
+                        let data = line.slice(5);
+                        if (data.startsWith(' ')) data = data.slice(1);
+                        if (data === '[DONE]') continue;
+                        let decoded = data;
+                        try {
+                            if (decoded && (decoded[0] === '"' || decoded[0] === '{' || decoded[0] === '[')) {
+                                decoded = JSON.parse(decoded);
+                            }
+                        } catch (e) {
+                            decoded = data;
+                        }
+                        appendAssistantText(decoded);
+                    }
+                }
+            }
             
             const time = document.createElement('div');
             time.className = 'message-time';
@@ -309,6 +709,9 @@ async function sendMessageStreaming(message) {
                 minute: '2-digit' 
             });
             assistantMessage.parentElement.appendChild(time);
+            
+            // Salvar conversa
+            saveCurrentConversation();
         }
     } catch (error) {
         console.error('Erro ao enviar mensagem:', error);
@@ -320,15 +723,18 @@ async function sendMessageStreaming(message) {
 // Enviar mensagem sem streaming
 async function sendMessageNormal(message) {
     try {
+        const sanitizedMessage = sanitizeInput(message);
+        
         const response = await fetch(`${API_BASE_URL}/webhooks/${selectedAgent}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({
                 user_id: 'web_user',
                 channel: 'web',
-                text: message,
+                text: sanitizedMessage,
                 conversation_id: conversationId,
                 stream: false
             })
@@ -337,16 +743,13 @@ async function sendMessageNormal(message) {
         const data = await response.json();
         
         if (response.ok && data.job_id) {
-            // Aguardar processamento do worker
             addSystemMessage('⏳ Processando... (aguarde alguns segundos)');
             
-            // Polling simples - em produção, usar WebSocket ou Server-Sent Events
             setTimeout(async () => {
                 try {
-                    // Verificar se há resposta via pub/sub ou webhook
-                    // Por enquanto, apenas avisamos que foi enfileirado
                     removeTypingIndicator();
                     addSystemMessage('✅ Mensagem enviada e processada pelo worker. Verifique os logs do worker para ver a resposta.');
+                    saveCurrentConversation();
                 } catch (error) {
                     console.error('Erro ao verificar resposta:', error);
                 }
@@ -366,8 +769,15 @@ async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message || !selectedAgent) return;
 
+    // Sanitizar antes de processar
+    const sanitizedMessage = sanitizeInput(message);
+    if (!sanitizedMessage) {
+        addSystemMessage('⚠️ Mensagem inválida ou muito longa');
+        return;
+    }
+
     // Adicionar mensagem do usuário
-    addMessage(message, 'user');
+    addMessage(sanitizedMessage, 'user');
     messageInput.value = '';
 
     // Adicionar indicador de digitação
@@ -375,48 +785,70 @@ async function sendMessage() {
 
     // Enviar mensagem
     if (isStreaming) {
-        await sendMessageStreaming(message);
+        await sendMessageStreaming(sanitizedMessage);
     } else {
-        await sendMessageNormal(message);
+        await sendMessageNormal(sanitizedMessage);
     }
 }
 
 // Event listeners
-sendButton.addEventListener('click', sendMessage);
+if (sendButton) {
+    sendButton.addEventListener('click', sendMessage);
+}
 
-messageInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-});
+if (messageInput) {
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+}
 
-clearButton.addEventListener('click', () => {
-    chatMessages.innerHTML = '';
-    conversationHistory = []; // Limpar histórico também
-    if (selectedAgent) {
-        conversationId = `conv_${Date.now()}`; // Nova conversa
-        addSystemMessage(`Chat limpo. Nova conversa iniciada com "${selectedAgent}"`);
-    } else {
-        addSystemMessage('👋 Bem-vindo! Selecione um agente acima para começar a conversar.');
-    }
-});
+if (clearButton) {
+    clearButton.addEventListener('click', () => {
+        if (conversationHistory.length > 0) {
+            saveCurrentConversation();
+        }
+        chatMessages.innerHTML = '';
+        conversationHistory = [];
+        if (selectedAgent) {
+            conversationId = `conv_${Date.now()}`;
+            addSystemMessage(`Chat limpo. Nova conversa iniciada com "${selectedAgent}"`);
+        } else {
+            addSystemMessage('👋 Bem-vindo! Selecione um agente acima para começar a conversar.');
+        }
+        renderConversationsList();
+    });
+}
 
-// Verificar se marked.js carregou
-window.addEventListener('DOMContentLoaded', () => {
+if (newConversationBtn) {
+    newConversationBtn.addEventListener('click', newConversation);
+}
+
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', logout);
+}
+
+// Inicialização
+window.addEventListener('DOMContentLoaded', async () => {
+    // Verificar autenticação
+    const isAuthenticated = await checkAuth();
+    if (!isAuthenticated) return;
+    
+    // Carregar conversas
+    loadConversations();
+    
+    // Carregar agentes
+    loadAgents();
+    updateStatus('Conectando...');
+    
+    // Verificar marked.js
     setTimeout(() => {
         if (typeof marked === 'undefined') {
             console.warn('marked.js não carregou, usando fallback de markdown');
         } else {
             console.log('marked.js carregado com sucesso');
-            // Testar renderização
-            const test = renderMarkdown('**teste**');
-            console.log('Teste de renderização:', test);
         }
     }, 100);
 });
-
-// Inicializar
-loadAgents();
-updateStatus('Conectando...');
-
