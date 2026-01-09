@@ -1,14 +1,6 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: #f5f7fa;
-    color: #2d3748;
-    line-height: 1.6;
+    background: var(--bg-main);
+    color: var(--text-primary);
 }
 
 .dashboard-container {
@@ -18,19 +10,20 @@ body {
 }
 
 .dashboard-header {
-    background: white;
+    background: var(--bg-white);
     padding: 25px 30px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
     margin-bottom: 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border: 1px solid var(--border-color);
 }
 
 .dashboard-header h1 {
     font-size: 28px;
-    color: #2d3748;
+    color: var(--text-primary);
 }
 
 .header-actions {
@@ -41,32 +34,34 @@ body {
 .btn {
     padding: 10px 20px;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s;
     text-decoration: none;
     display: inline-block;
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--sia-primary);
     color: white;
 }
 
 .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    background: #1c64d6;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 82, 186, 0.2);
 }
 
 .btn-secondary {
-    background: #e2e8f0;
-    color: #2d3748;
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid #cbd5e1;
 }
 
 .btn-secondary:hover {
-    background: #cbd5e0;
+    background: #f1f5f9;
 }
 
 .btn-small {
@@ -81,17 +76,18 @@ body {
 }
 
 section {
-    background: white;
+    background: var(--bg-white);
     padding: 25px 30px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-color);
 }
 
 section h2 {
     font-size: 22px;
     margin-bottom: 20px;
-    color: #2d3748;
-    border-bottom: 2px solid #e2e8f0;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
     padding-bottom: 10px;
 }
 
@@ -102,9 +98,9 @@ section h2 {
 }
 
 .metric-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--sia-primary) 0%, #1c64d6 100%);
     padding: 25px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     color: white;
 }
 

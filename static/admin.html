@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Secretaria de IA</title>
+    <title>Admin - SIA-Piauí</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/ui/base.css">
     <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
+    <div id="app-nav"></div>
     <div class="dashboard-container">
         <header class="dashboard-header">
-            <h1>🤖 Secretaria de IA - Dashboard</h1>
+            <h1>Admin - SIA-Piauí</h1>
             <div class="header-actions">
                 <a href="/create-agent" class="btn btn-primary">➕ Criar Agente</a>
                 <button id="refresh-btn" class="btn btn-primary">🔄 Atualizar</button>
@@ -89,6 +92,8 @@
         </div>
     </div>
 
+    <script src="/static/ui/utils.js"></script>
+    <script src="/static/ui/nav.js"></script>
     <script src="/static/admin.js"></script>
 </body>
 </html>

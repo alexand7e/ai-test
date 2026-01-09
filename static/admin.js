@@ -1,4 +1,6 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = (window.SIAUtils && window.SIAUtils.getApiBaseUrl)
+    ? window.SIAUtils.getApiBaseUrl()
+    : (window.location && window.location.origin ? window.location.origin : 'http://localhost:8000');
 
 // Elementos DOM
 const refreshBtn = document.getElementById('refresh-btn');
