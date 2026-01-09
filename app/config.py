@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     redis_queue_name: str = "agent_jobs"
     redis_stream_name: str = "agent_stream"
     
+    # Security
+    acess_token: str = ""  # Token de acesso para autenticação
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

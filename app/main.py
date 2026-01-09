@@ -18,10 +18,14 @@ from app.domain.agent_service import AgentService
 from app.domain.metrics_service import MetricsService
 from app.domain.rag_document_service import RAGDocumentService
 from app.domain.data_analysis_service import DataAnalysisService
+from app.middleware.auth_middleware import AuthMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import time
 import json
+import html
+import json
+import re
 
 # Configurar logging
 logging.basicConfig(
@@ -95,6 +99,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Autenticação
+app.add_middleware(
+    AuthMiddleware,
+    access_token=settings.acess_token
+)
+
 # Rate Limiting será adicionado dinamicamente no lifespan
 
 # Servir arquivos estáticos
@@ -111,6 +121,76 @@ async def root():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return {"message": "AI Agent API - Acesse /static/index.html"}
+
+
+@app.get("/login")
+async def login_page():
+    """Serve a página de login"""
+    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+    login_path = os.path.join(static_dir, "login.html")
+    if os.path.exists(login_path):
+        return FileResponse(login_path)
+    return {"message": "Login page not available"}
+
+
+class LoginRequest(BaseModel):
+    token: str
+
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """Endpoint de login"""
+    if not settings.acess_token:
+        # Se não houver token configurado, permite qualquer token
+        return JSONResponse({
+            "success": True,
+            "message": "Login realizado com sucesso"
+        })
+    
+    if request.token == settings.acess_token:
+        response = JSONResponse({
+            "success": True,
+            "message": "Login realizado com sucesso"
+        })
+        # Define cookie com o token
+        response.set_cookie(
+            key="access_token",
+            value=request.token,
+            httponly=True,
+            secure=False,  # Em produção, usar True com HTTPS
+            samesite="lax",
+            max_age=86400 * 7  # 7 dias
+        )
+        return response
+    else:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+
+@app.post("/api/auth/verify")
+async def verify_token(request: Request):
+    """Verifica se o token é válido"""
+    # Se não houver token configurado, sempre retorna válido
+    if not settings.acess_token:
+        return {"valid": True}
+    
+    # Verifica token do cookie ou header
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+    
+    # Verifica se o token é válido
+    is_valid = token and token == settings.acess_token
+    return {"valid": is_valid}
+
+
+@app.post("/api/auth/logout")
+async def logout():
+    """Endpoint de logout"""
+    response = JSONResponse({"success": True, "message": "Logout realizado"})
+    response.delete_cookie("access_token")
+    return response
 
 
 @app.get("/health")
@@ -159,17 +239,50 @@ async def webhook_entry(agent_id: str, request: Request):
         # Parse do body (assumindo JSON)
         body = await request.json()
         
+        # Sanitiza inputs
+        def sanitize_input(value):
+            """Sanitiza entrada de dados"""
+            if value is None:
+                return None
+            if isinstance(value, str):
+                # Remove tags HTML perigosas primeiro
+                value = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', value, flags=re.IGNORECASE)
+                value = re.sub(r'<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>', '', value, flags=re.IGNORECASE)
+                value = re.sub(r'javascript:', '', value, flags=re.IGNORECASE)
+                value = re.sub(r'on\w+\s*=', '', value, flags=re.IGNORECASE)
+                # Remove caracteres de controle
+                value = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', value)
+                # Limita tamanho
+                if len(value) > 10000:
+                    value = value[:10000]
+                # Escapa HTML para segurança
+                value = html.escape(value)
+            elif isinstance(value, dict):
+                return {k: sanitize_input(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [sanitize_input(item) for item in value]
+            return value
+        
+        # Sanitiza histórico se presente
+        history = body.get("history", [])
+        if history:
+            history = sanitize_input(history)
+        
         # Normaliza mensagem (simplificado - em produção, validar conforme provedor)
+        sanitized_text = sanitize_input(body.get("text", ""))
+        sanitized_user_id = sanitize_input(body.get("user_id", "unknown"))
+        sanitized_metadata = sanitize_input(body.get("metadata", {}))
+        sanitized_conversation_id = sanitize_input(body.get("conversation_id"))
+        
         message = WebhookMessage(
-            user_id=body.get("user_id", "unknown"),
+            user_id=sanitized_user_id,
             channel=MessageChannel(body.get("channel", "web")),
-            text=body.get("text", ""),
-            metadata=body.get("metadata", {}),
-            conversation_id=body.get("conversation_id")
+            text=sanitized_text,
+            metadata=sanitized_metadata if isinstance(sanitized_metadata, dict) else {},
+            conversation_id=sanitized_conversation_id
         )
         
-        # Recupera histórico de mensagens do body ou do Redis
-        history = body.get("history", [])
+        # Recupera histórico de mensagens (já sanitizado acima)
         
         # Verifica se deve usar streaming
         stream = body.get("stream", False)
@@ -183,11 +296,11 @@ async def webhook_entry(agent_id: str, request: Request):
                     async for token in agent_service.process_message(
                         agent_config, message, stream=True, history=history
                     ):
-                        yield f"data: {token}\n\n"
+                        yield f"data: {json.dumps(token, ensure_ascii=False)}\n\n"
                     success = True
                 except Exception as e:
                     logger.error(f"Error in stream: {e}", exc_info=True)
-                    yield f"data: [ERRO: {str(e)}]\n\n"
+                    yield f"data: {json.dumps(f'[ERRO: {str(e)}]', ensure_ascii=False)}\n\n"
                     success = False
             
             # Para streaming, não registramos métricas aqui pois não temos tokens
