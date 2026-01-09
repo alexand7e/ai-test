@@ -1,0 +1,71 @@
+.app-nav {
+    height: 56px;
+    background: var(--sia-blue-dark);
+    color: var(--text-inverse);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+    width: 100%;
+}
+
+.app-nav-inner {
+    height: 100%;
+    width: 100%;
+    padding: 2px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.app-brand {
+    color: var(--text-inverse);
+    text-decoration: none;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.app-links {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.app-link {
+    color: #cbd5e1;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.app-link:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.app-link.active {
+    color: white;
+    background: rgba(15, 82, 186, 0.28);
+    border-color: rgba(15, 82, 186, 0.5);
+}
+
+.app-link-button {
+    font-family: inherit;
+}
+
+@media (max-width: 720px) {
+    .app-links {
+        gap: 6px;
+    }
+
+    .app-link {
+        padding: 8px 8px;
+    }
+}
+
