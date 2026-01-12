@@ -9,16 +9,24 @@ const globalMetrics = document.getElementById('global-metrics');
 const ragIndexSelect = document.getElementById('rag-index-select');
 const refreshRagBtn = document.getElementById('refresh-rag-btn');
 const addDocBtn = document.getElementById('add-doc-btn');
+const uploadFileBtn = document.getElementById('upload-file-btn');
+const ragSearchQuery = document.getElementById('rag-search-query');
+const ragSearchTopK = document.getElementById('rag-search-topk');
+const ragSearchBtn = document.getElementById('rag-search-btn');
 const ragStats = document.getElementById('rag-stats');
 const ragDocuments = document.getElementById('rag-documents');
 const docModal = document.getElementById('doc-modal');
 const docForm = document.getElementById('doc-form');
-const closeModal = document.querySelector('.close');
+const closeDocModal = document.querySelector('#doc-modal .close');
+const fileModal = document.getElementById('file-modal');
+const fileForm = document.getElementById('file-form');
+const closeFileModal = document.getElementById('file-modal-close');
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
     loadGlobalMetrics();
     loadAgents();
+    loadRAGIndexes();
     setupEventListeners();
 });
 
@@ -35,14 +43,25 @@ function setupEventListeners() {
     addDocBtn.addEventListener('click', () => {
         docModal.style.display = 'block';
     });
+
+    uploadFileBtn.addEventListener('click', () => {
+        fileModal.style.display = 'block';
+    });
     
-    closeModal.addEventListener('click', () => {
+    closeDocModal.addEventListener('click', () => {
         docModal.style.display = 'none';
+    });
+
+    closeFileModal.addEventListener('click', () => {
+        fileModal.style.display = 'none';
     });
     
     window.addEventListener('click', (e) => {
         if (e.target === docModal) {
             docModal.style.display = 'none';
+        }
+        if (e.target === fileModal) {
+            fileModal.style.display = 'none';
         }
     });
     
@@ -52,10 +71,30 @@ function setupEventListeners() {
             loadRAGStats(e.target.value);
         }
     });
+
+    ragSearchBtn.addEventListener('click', async () => {
+        const indexName = ragIndexSelect.value;
+        const query = (ragSearchQuery.value || '').trim();
+        const topK = parseInt(ragSearchTopK.value || '5', 10) || 5;
+        if (!indexName) {
+            alert('Selecione um índice');
+            return;
+        }
+        if (!query) {
+            alert('Digite um termo para buscar');
+            return;
+        }
+        await searchRAG(indexName, query, topK);
+    });
     
     docForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         await addDocument();
+    });
+
+    fileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await uploadRAGFile();
     });
 }
 
@@ -109,8 +148,7 @@ async function loadAgents() {
             agentsGrid.appendChild(card);
         });
         
-        // Atualizar lista de índices RAG
-        updateRAGIndexes(data.agents);
+        await loadRAGIndexes();
     } catch (error) {
         console.error('Erro ao carregar agentes:', error);
         agentsGrid.innerHTML = '<div class="error">Erro ao carregar agentes</div>';
@@ -127,7 +165,7 @@ function createAgentCard(agent) {
         <h3>${agent.id}</h3>
         <div class="agent-info">
             <span><strong>Modelo:</strong> ${agent.model}</span>
-            <span><strong>RAG:</strong> ${agent.has_rag ? '✅ Sim' : '❌ Não'}</span>
+            <span><strong>RAG:</strong> ${agent.has_rag ? 'Ativo' : 'Desativado'}</span>
             <span><strong>Tools:</strong> ${agent.tools_count || 0}</span>
         </div>
         ${metrics.messages !== undefined ? `
@@ -153,34 +191,48 @@ function createAgentCard(agent) {
                 </div>
             </div>
         ` : ''}
+        <div class="agent-actions">
+            <a class="btn btn-secondary btn-small btn-with-icon" href="/create-agent?agent_id=${encodeURIComponent(agent.id)}">
+                <svg class="icon"><use href="#icon-edit"></use></svg>
+                Editar
+            </a>
+            <button class="btn btn-outline-danger btn-small btn-with-icon" data-agent-id="${agent.id}">
+                <svg class="icon"><use href="#icon-trash"></use></svg>
+                Excluir
+            </button>
+        </div>
     `;
+
+    const deleteBtn = card.querySelector('button[data-agent-id]');
+    deleteBtn.addEventListener('click', async () => {
+        const agentId = deleteBtn.getAttribute('data-agent-id');
+        await deleteAgent(agentId);
+    });
     
     return card;
 }
 
 // RAG Management
-function updateRAGIndexes(agents) {
-    const indexes = new Set();
-    agents.forEach(agent => {
-        if (agent.has_rag) {
-            // Assumindo que o nome do índice está no agente
-            // Em produção, buscar dos agentes carregados
-        }
-    });
-    
-    // Adicionar índices conhecidos
-    ragIndexSelect.innerHTML = '<option value="">Selecione um índice...</option>';
-    ['general_knowledge', 'educacao_docs'].forEach(index => {
-        const option = document.createElement('option');
-        option.value = index;
-        option.textContent = index;
-        ragIndexSelect.appendChild(option);
-    });
-}
-
 async function loadRAGIndexes() {
-    // Implementar busca de índices disponíveis
-    updateRAGIndexes([]);
+    try {
+        const current = ragIndexSelect.value;
+        const response = await fetch(`${API_BASE_URL}/rag/indexes`);
+        const data = await response.json();
+
+        ragIndexSelect.innerHTML = '<option value="">Selecione um índice...</option>';
+        (data.indexes || []).forEach(index => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = index;
+            ragIndexSelect.appendChild(option);
+        });
+
+        if (current && (data.indexes || []).includes(current)) {
+            ragIndexSelect.value = current;
+        }
+    } catch (error) {
+        console.error('Erro ao carregar índices RAG:', error);
+    }
 }
 
 async function loadRAGStats(indexName) {
@@ -231,8 +283,9 @@ function createDocumentCard(doc, indexName) {
     card.innerHTML = `
         <div class="document-card-header">
             <span class="document-id">ID: ${doc.id}</span>
-            <button class="btn btn-danger btn-small" onclick="deleteDocument('${indexName}', '${doc.id}')">
-                🗑️ Deletar
+            <button class="btn btn-danger btn-small btn-with-icon" onclick="deleteDocument('${indexName}', '${doc.id}')">
+                <svg class="icon"><use href="#icon-trash"></use></svg>
+                Excluir
             </button>
         </div>
         <div class="document-content">${escapeHtml(contentPreview)}</div>
@@ -262,7 +315,7 @@ async function addDocument() {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/rag/${indexName}/documents`, {
+        const response = await fetch(`${API_BASE_URL}/rag/${indexName}/documents?backend=qdrant`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -293,6 +346,101 @@ async function addDocument() {
     }
 }
 
+async function uploadRAGFile() {
+    const indexName = document.getElementById('file-index').value;
+    const fileInput = document.getElementById('rag-file');
+    const metadataText = document.getElementById('file-metadata').value;
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Selecione um arquivo');
+        return;
+    }
+
+    let metadataJson = '';
+    if (metadataText.trim()) {
+        try {
+            JSON.parse(metadataText);
+            metadataJson = metadataText;
+        } catch (e) {
+            alert('Erro: Metadados devem ser um JSON válido');
+            return;
+        }
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('backend', 'qdrant');
+    formData.append('chunk_size', '1500');
+    formData.append('overlap', '300');
+    if (metadataJson) {
+        formData.append('metadata_json', metadataJson);
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/rag/${indexName}/files`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            alert(`Arquivo carregado! Chunks: ${data.chunks}`);
+            fileModal.style.display = 'none';
+            fileForm.reset();
+            if (ragIndexSelect.value === indexName) {
+                loadRAGDocuments(indexName);
+                loadRAGStats(indexName);
+            }
+        } else {
+            const error = await response.json();
+            alert(`Erro: ${error.detail || 'Erro desconhecido'}`);
+        }
+    } catch (error) {
+        console.error('Erro ao carregar arquivo:', error);
+        alert('Erro ao carregar arquivo');
+    }
+}
+
+async function searchRAG(indexName, query, topK) {
+    try {
+        ragDocuments.innerHTML = '<div class="loading">Buscando...</div>';
+        const params = new URLSearchParams({ query, top_k: String(topK), backend: 'qdrant' });
+        const response = await fetch(`${API_BASE_URL}/rag/${indexName}/search?${params.toString()}`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        ragDocuments.innerHTML = '';
+        const results = data.results || [];
+        if (results.length === 0) {
+            ragDocuments.innerHTML = '<div class="loading">Nenhum resultado encontrado</div>';
+            return;
+        }
+
+        results.forEach(res => {
+            const card = document.createElement('div');
+            card.className = 'document-card';
+            const contentPreview = (res.content || '').length > 260 ? (res.content || '').substring(0, 260) + '...' : (res.content || '');
+            card.innerHTML = `
+                <div class="document-card-header">
+                    <span class="document-id">ID: ${res.id}</span>
+                    <span class="document-id">Score: ${(res.score || 0).toFixed(4)}</span>
+                </div>
+                <div class="document-content">${escapeHtml(contentPreview)}</div>
+                ${res.metadata && Object.keys(res.metadata).length > 0 ? `
+                    <div style="font-size: 12px; color: #718096;">
+                        Metadados: ${JSON.stringify(res.metadata)}
+                    </div>
+                ` : ''}
+            `;
+            ragDocuments.appendChild(card);
+        });
+    } catch (error) {
+        console.error('Erro ao buscar no RAG:', error);
+        ragDocuments.innerHTML = '<div class="error">Erro ao buscar no índice</div>';
+    }
+}
+
 async function deleteDocument(indexName, documentId) {
     if (!confirm('Tem certeza que deseja deletar este documento?')) {
         return;
@@ -314,6 +462,29 @@ async function deleteDocument(indexName, documentId) {
     } catch (error) {
         console.error('Erro ao deletar documento:', error);
         alert('Erro ao deletar documento');
+    }
+}
+
+async function deleteAgent(agentId) {
+    if (!confirm(`Tem certeza que deseja excluir o agente "${agentId}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/agents/${encodeURIComponent(agentId)}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            await loadAgents();
+            await loadRAGIndexes();
+        } else {
+            const error = await response.json();
+            alert(`Erro: ${error.detail || 'Erro desconhecido'}`);
+        }
+    } catch (error) {
+        console.error('Erro ao excluir agente:', error);
+        alert('Erro ao excluir agente');
     }
 }
 

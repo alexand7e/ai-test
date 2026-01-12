@@ -481,126 +481,6 @@ function renderMarkdown(text) {
     return html;
 }
 
-function safeFilename(value) {
-    if (!value) return 'export';
-    return value
-        .toString()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-zA-Z0-9\-_ ]/g, '')
-        .trim()
-        .replace(/\s+/g, '_')
-        .substring(0, 80) || 'export';
-}
-
-function buildExportHtml(title, contentHtml) {
-    const safeTitle = escapeHtml(title || 'Exportação');
-    return `<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${safeTitle}</title>
-  <style>
-    body { font-family: Arial, sans-serif; color: #0f172a; margin: 24px; }
-    h1,h2,h3 { margin: 0 0 12px; }
-    a { color: #0f52ba; }
-    pre { background: #f1f5f9; padding: 12px; border-radius: 8px; overflow-x: auto; }
-    code { font-family: 'Courier New', monospace; }
-    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; vertical-align: top; }
-    th { background: #f8fafc; font-weight: 700; }
-    hr { border: none; border-top: 1px solid #cbd5e1; margin: 16px 0; }
-  </style>
-</head>
-<body>
-  <h2>${safeTitle}</h2>
-  <hr>
-  ${contentHtml}
-</body>
-</html>`;
-}
-
-function exportBubbleAsWord(bubble, fileBaseName) {
-    if (!bubble) return;
-    const title = fileBaseName || 'Resposta';
-    const html = buildExportHtml(title, bubble.innerHTML || '');
-    const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${safeFilename(title)}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function exportBubbleAsPdf(bubble, fileBaseName) {
-    if (!bubble) return;
-    const title = fileBaseName || 'Resposta';
-    const html = buildExportHtml(title, bubble.innerHTML || '');
-    const w = window.open('', '_blank', 'noopener,noreferrer');
-    if (!w) {
-        addSystemMessage('⚠️ Bloqueador de pop-up impediu a exportação em PDF.');
-        return;
-    }
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.addEventListener('load', () => {
-        w.print();
-    });
-}
-
-function createMessageActions(bubble, type) {
-    if (type !== 'assistant') return null;
-    const actions = document.createElement('div');
-    actions.className = 'message-actions';
-
-    const now = new Date();
-    const agentLabel = (typeof selectedAgent !== 'undefined' && selectedAgent) ? selectedAgent : 'assistente';
-    const baseName = `Resposta_${agentLabel}_${now.toLocaleDateString('pt-BR')}_${now.toLocaleTimeString('pt-BR')}`;
-
-    const makeBtn = (kind, title, svgHtml, onClick) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = `message-action-btn ${kind}`;
-        btn.title = title;
-        btn.setAttribute('aria-label', title);
-        btn.innerHTML = svgHtml;
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onClick();
-        });
-        return btn;
-    };
-
-    const pdfSvg = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-  <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.6"/>
-  <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="currentColor" stroke-width="1.6"/>
-  <path d="M7.5 16.5h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-  <path d="M7.5 13.5h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-</svg>`;
-
-    const wordSvg = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-  <path d="M7 3h7l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.6"/>
-  <path d="M14 3v4a1 1 0 0 0 1 1h4" stroke="currentColor" stroke-width="1.6"/>
-  <path d="M8 12.5l1.2 6 1.6-6 1.6 6 1.2-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>`;
-
-    actions.appendChild(
-        makeBtn('pdf', 'Exportar esta resposta em PDF', pdfSvg, () => exportBubbleAsPdf(bubble, baseName))
-    );
-    actions.appendChild(
-        makeBtn('word', 'Exportar esta resposta em Word', wordSvg, () => exportBubbleAsWord(bubble, baseName))
-    );
-
-    return actions;
-}
-
 // Adicionar mensagem
 function addMessage(content, type = 'user', save = true) {
     // Sanitizar conteúdo
@@ -628,7 +508,6 @@ function addMessage(content, type = 'user', save = true) {
     
     // Renderizar markdown apenas para mensagens do assistente
     if (type === 'assistant') {
-        bubble.setAttribute('data-text', sanitizedContent);
         bubble.innerHTML = renderMarkdown(sanitizedContent);
     } else {
         bubble.textContent = sanitizedContent;
@@ -642,10 +521,6 @@ function addMessage(content, type = 'user', save = true) {
     });
     
     messageDiv.appendChild(bubble);
-    const actions = createMessageActions(bubble, type);
-    if (actions) {
-        messageDiv.appendChild(actions);
-    }
     messageDiv.appendChild(time);
     chatMessages.appendChild(messageDiv);
     
@@ -748,10 +623,6 @@ async function sendMessageStreaming(message) {
             bubble.setAttribute('data-text', '');
             bubble.innerHTML = '';
             messageDiv.appendChild(bubble);
-            const actions = createMessageActions(bubble, 'assistant');
-            if (actions) {
-                messageDiv.appendChild(actions);
-            }
             chatMessages.appendChild(messageDiv);
             assistantMessage = bubble;
 

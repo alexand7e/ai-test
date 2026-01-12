@@ -10,12 +10,52 @@
     <link rel="stylesheet" href="/static/create-agent.css">
 </head>
 <body>
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+        <symbol id="icon-arrow-left" viewBox="0 0 24 24" fill="none">
+            <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-users" viewBox="0 0 24 24" fill="none">
+            <path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z" stroke="currentColor" stroke-width="2"/>
+            <path d="M4 20a8 8 0 0 1 16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-chat" viewBox="0 0 24 24" fill="none">
+            <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-database" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3c-4.97 0-9 1.79-9 4s4.03 4 9 4 9-1.79 9-4-4.03-4-9-4Z" stroke="currentColor" stroke-width="2"/>
+            <path d="M3 7v10c0 2.21 4.03 4 9 4s9-1.79 9-4V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M3 12c0 2.21 4.03 4 9 4s9-1.79 9-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-chart" viewBox="0 0 24 24" fill="none">
+            <path d="M4 19V5M20 19V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M7 14l3-3 3 2 4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-file" viewBox="0 0 24 24" fill="none">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-save" viewBox="0 0 24 24" fill="none">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M17 21v-8H7v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 3v5h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-clipboard" viewBox="0 0 24 24" fill="none">
+            <path d="M9 3h6v3H9V3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 6h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+    </svg>
     <div id="app-nav"></div>
     <div class="dashboard-container">
         <header class="dashboard-header">
-            <h1>🤖 Criar Novo Agente</h1>
+            <h1 id="page-title" class="section-title">
+                <svg class="icon icon-title"><use href="#icon-users"></use></svg>
+                Criar Agente
+            </h1>
             <div class="header-actions">
-                <a href="/admin" class="btn btn-secondary">← Voltar</a>
+                <a href="/admin" class="btn btn-secondary btn-with-icon">
+                    <svg class="icon"><use href="#icon-arrow-left"></use></svg>
+                    Voltar
+                </a>
             </div>
         </header>
 
@@ -26,7 +66,10 @@
             <form id="agent-form">
                 <!-- Informações Básicas -->
                 <div class="form-section">
-                    <h3>📋 Informações Básicas</h3>
+                    <h3 class="section-title">
+                        <svg class="icon"><use href="#icon-clipboard"></use></svg>
+                        Informações Básicas
+                    </h3>
                     
                     <div class="form-group">
                         <label for="agent-id">ID do Agente *</label>
@@ -68,7 +111,10 @@
 
                 <!-- Prompt do Sistema -->
                 <div class="form-section">
-                    <h3>💬 Prompt do Sistema</h3>
+                    <h3 class="section-title">
+                        <svg class="icon"><use href="#icon-chat"></use></svg>
+                        Prompt do Sistema
+                    </h3>
                     
                     <div class="form-group">
                         <label for="agent-prompt">Prompt *</label>
@@ -79,7 +125,10 @@
 
                 <!-- Configuração RAG -->
                 <div class="form-section">
-                    <h3>📚 Base de Conhecimento (RAG)</h3>
+                    <h3 class="section-title">
+                        <svg class="icon"><use href="#icon-database"></use></svg>
+                        Base de Conhecimento (RAG)
+                    </h3>
                     
                     <div class="form-group">
                         <div class="checkbox-group">
@@ -101,12 +150,48 @@
                                    value="5" min="1" max="20">
                             <div class="help-text">Número de contextos relevantes a recuperar</div>
                         </div>
+
+                        <div class="form-group">
+                            <label for="rag-chunk-size">Chunk Size</label>
+                            <input type="number" id="rag-chunk-size" name="rag_chunk_size"
+                                   value="1500" min="200" max="4000">
+                            <div class="help-text">Tamanho do chunk para ingestão (caracteres)</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="rag-overlap">Overlap</label>
+                            <input type="number" id="rag-overlap" name="rag_overlap"
+                                   value="300" min="0" max="1000">
+                            <div class="help-text">Sobreposição entre chunks para manter contexto</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Carregar documentos</label>
+                            <div class="file-upload-area" id="rag-file-upload-area">
+                                <p>
+                                    <svg class="icon" style="vertical-align:-3px;"><use href="#icon-file"></use></svg>
+                                    Arraste arquivos aqui ou clique para selecionar
+                                </p>
+                                <p style="font-size: 12px; color: #718096; margin-top: 5px;">
+                                    Formatos suportados: PDF, DOCX, XLSX, TXT, MD
+                                </p>
+                                <input type="file" id="rag-file-input" multiple
+                                       accept=".pdf,.docx,.xlsx,.xls,.txt,.md" style="display: none;">
+                            </div>
+                            <div class="file-list" id="rag-file-list"></div>
+                            <div class="help-text" style="margin-top: 10px;">
+                                Os arquivos serão ingeridos automaticamente após salvar o agente.
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Análise de Dados -->
                 <div class="form-section">
-                    <h3>📊 Análise de Dados</h3>
+                    <h3 class="section-title">
+                        <svg class="icon"><use href="#icon-chart"></use></svg>
+                        Análise de Dados
+                    </h3>
                     
                     <div class="form-group">
                         <div class="checkbox-group">
@@ -120,7 +205,10 @@
                         <div class="form-group">
                             <label>Upload de Arquivos</label>
                             <div class="file-upload-area" id="file-upload-area">
-                                <p>📁 Arraste arquivos aqui ou clique para selecionar</p>
+                                <p>
+                                    <svg class="icon" style="vertical-align:-3px;"><use href="#icon-file"></use></svg>
+                                    Arraste arquivos aqui ou clique para selecionar
+                                </p>
                                 <p style="font-size: 12px; color: #718096; margin-top: 5px;">
                                     Formatos suportados: CSV, JSON, XLSX
                                 </p>
@@ -141,7 +229,10 @@
 
                 <!-- Schemas -->
                 <div class="form-section">
-                    <h3>📝 Schemas</h3>
+                    <h3 class="section-title">
+                        <svg class="icon"><use href="#icon-clipboard"></use></svg>
+                        Schemas
+                    </h3>
                     
                     <div class="form-group">
                         <label for="input-schema">Input Schema (JSON) *</label>
@@ -167,8 +258,9 @@
                     <button type="button" class="btn btn-secondary" onclick="window.location.href='/admin'">
                         Cancelar
                     </button>
-                    <button type="submit" class="btn btn-primary">
-                        ✅ Criar Agente
+                    <button id="submit-btn" type="submit" class="btn btn-primary btn-with-icon">
+                        <svg class="icon"><use href="#icon-save"></use></svg>
+                        Criar Agente
                     </button>
                 </div>
             </form>

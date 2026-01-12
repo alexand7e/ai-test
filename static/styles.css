@@ -420,47 +420,6 @@ body {
     padding: 0 4px;
 }
 
-.message-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 6px;
-    opacity: 0.35;
-    transition: opacity 0.2s;
-}
-
-.message.assistant:hover .message-actions {
-    opacity: 1;
-}
-
-.message-action-btn {
-    appearance: none;
-    background: transparent;
-    border: 1px solid rgba(148, 163, 184, 0.55);
-    color: #64748b;
-    border-radius: 10px;
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-
-.message-action-btn:hover {
-    border-color: rgba(100, 116, 139, 0.8);
-    color: #0f172a;
-}
-
-.message-action-btn:active {
-    transform: translateY(1px);
-}
-
-.message-action-btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(15, 82, 186, 0.15);
-}
-
 /* --- ÁREA DE INPUT --- */
 .chat-input-container {
     padding: 24px 32px;

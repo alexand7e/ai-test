@@ -43,6 +43,30 @@ body {
     display: inline-block;
 }
 
+.btn-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.icon {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    color: currentColor;
+}
+
+.icon-title {
+    width: 18px;
+    height: 18px;
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .btn-primary {
     background: var(--sia-primary);
     color: white;
@@ -186,6 +210,38 @@ section h2 {
     align-items: flex-end;
     margin-bottom: 20px;
     flex-wrap: wrap;
+}
+
+.rag-search {
+    flex: 1;
+    min-width: 320px;
+}
+
+.rag-search-row {
+    display: grid;
+    grid-template-columns: 1fr 84px auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.rag-search-row input[type="number"] {
+    text-align: center;
+}
+
+.agent-actions {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+}
+
+.btn-outline-danger {
+    background: transparent;
+    color: #c53030;
+    border: 1px solid #feb2b2;
+}
+
+.btn-outline-danger:hover {
+    background: #fff5f5;
 }
 
 .form-group {
