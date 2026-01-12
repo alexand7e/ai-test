@@ -21,7 +21,7 @@ output_schema:
       description: Resposta à pergunta do usuário
 
 rag:
-  type: redis
+  type: qdrant
   index_name: educacao_docs
   top_k: 5
 

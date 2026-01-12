@@ -25,7 +25,7 @@ output_schema:
       type: string
 
 rag:
-  type: redis
+  type: qdrant
   index_name: nome_do_indice
   top_k: 5
 
