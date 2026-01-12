@@ -1,6 +1,7 @@
 from typing import List, Optional
 from app.models import AgentConfig, RAGContext
 from app.infrastructure.redis_client import RedisClient
+from app.infrastructure.qdrant_client import QdrantClient
 from app.infrastructure.openai_client import OpenAIClient
 import logging
 
@@ -10,9 +11,10 @@ logger = logging.getLogger(__name__)
 class RAGService:
     """Serviço de RAG (Retrieval Augmented Generation)"""
     
-    def __init__(self, redis_client: RedisClient, openai_client: OpenAIClient):
+    def __init__(self, redis_client: RedisClient, openai_client: OpenAIClient, qdrant_client: Optional[QdrantClient] = None):
         self.redis = redis_client
         self.openai = openai_client
+        self.qdrant = qdrant_client
     
     async def retrieve_context(
         self,
@@ -28,34 +30,45 @@ class RAGService:
         top_k = top_k or agent_config.rag.top_k
         
         try:
-            if self.redis.client:
-                index_list_key = f"rag:index:{agent_config.rag.index_name}:documents"
-                doc_count = await self.redis.client.scard(index_list_key)
-                if doc_count == 0:
-                    logger.warning(f"RAG index '{agent_config.rag.index_name}' is empty")
-                    return []
-
             # Gera embedding da query
             query_embedding = await self.openai.get_embedding(query)
+
+            contexts: List[RAGContext] = []
+
+            if getattr(agent_config.rag, "type", "qdrant") == "qdrant":
+                if not self.qdrant or not self.qdrant.client:
+                    return []
+
+                results = await self.qdrant.search(
+                    collection_name=agent_config.rag.index_name,
+                    query_vector=query_embedding,
+                    top_k=top_k,
+                )
+
+                for point in results:
+                    payload = getattr(point, "payload", None) or {}
+                    contexts.append(
+                        RAGContext(
+                            content=payload.get("content", ""),
+                            score=float(getattr(point, "score", 0.0) or 0.0),
+                            metadata=payload.get("metadata"),
+                        )
+                    )
+            else:
+                results = await self.redis.vector_search(
+                    index_name=agent_config.rag.index_name,
+                    query_vector=query_embedding,
+                    top_k=top_k
+                )
+
+                for result in results:
+                    contexts.append(RAGContext(
+                        content=result.get('content', ''),
+                        score=result.get('score', 0.0),
+                        metadata=result.get('metadata')
+                    ))
             
-            # Busca vetorial no Redis
-            results = await self.redis.vector_search(
-                index_name=agent_config.rag.index_name,
-                query_vector=query_embedding,
-                top_k=top_k
-            )
-            
-            # Converte resultados para RAGContext
-            contexts = []
-            for result in results:
-                contexts.append(RAGContext(
-                    content=result.get('content', ''),
-                    score=result.get('score', 0.0),
-                    metadata=result.get('metadata')
-                ))
-            
-            best_score = contexts[0].score if contexts else 0.0
-            logger.info(f"Retrieved {len(contexts)} contexts for query (best_score={best_score:.3f})")
+            logger.info(f"Retrieved {len(contexts)} contexts for query")
             return contexts
         
         except Exception as e:

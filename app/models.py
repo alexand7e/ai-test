@@ -32,7 +32,7 @@ class Job(BaseModel):
 
 class AgentRAGConfig(BaseModel):
     """Configuração de RAG para um agente"""
-    type: str = "redis"
+    type: str = "qdrant"
     index_name: str
     top_k: int = 5
     documents_dir: Optional[str] = None

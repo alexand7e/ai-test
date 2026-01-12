@@ -8,6 +8,7 @@ from app.config import settings
 from app.models import WebhookMessage, AgentResponse
 from app.agent_loader import AgentLoader
 from app.infrastructure.redis_client import RedisClient
+from app.infrastructure.qdrant_client import QdrantClient
 from app.infrastructure.openai_client import OpenAIClient
 from app.domain.rag_service import RAGService
 from app.domain.agent_service import AgentService
@@ -28,8 +29,9 @@ class Worker:
     def __init__(self):
         self.agent_loader = AgentLoader()
         self.redis = RedisClient()
+        self.qdrant = QdrantClient()
         self.openai = OpenAIClient()
-        self.rag_service = RAGService(self.redis, self.openai)
+        self.rag_service = RAGService(self.redis, self.openai, qdrant_client=self.qdrant)
         self.agent_service = AgentService(self.redis, self.openai, self.rag_service)
         self.metrics_service = MetricsService(self.redis)
         self.running = False
@@ -37,6 +39,7 @@ class Worker:
     async def start(self):
         """Inicia o worker"""
         await self.redis.connect()
+        await self.qdrant.connect()
         self.running = True
         logger.info("Worker started")
         
@@ -52,6 +55,7 @@ class Worker:
             logger.info("Worker shutting down...")
             self.running = False
             await self.redis.disconnect()
+            await self.qdrant.disconnect()
     
     async def consume_loop(self, consumer_name: str):
         """Loop principal de consumo de jobs"""
@@ -171,4 +175,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

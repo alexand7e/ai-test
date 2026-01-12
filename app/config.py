@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+
+    # Qdrant (Vector DB)
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: Optional[str] = None
     
     # Application
     environment: str = "development"

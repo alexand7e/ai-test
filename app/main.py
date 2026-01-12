@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 import os
-from pathlib import Path
 # Rate limiting será implementado se necessário
 # from app.middleware.rate_limiter import RateLimiterMiddleware
 
@@ -13,12 +12,12 @@ from app.config import settings
 from app.models import WebhookMessage, MessageChannel, AgentConfig, AgentRAGConfig, DataAnalysisConfig
 from app.agent_loader import AgentLoader
 from app.infrastructure.redis_client import RedisClient
+from app.infrastructure.qdrant_client import QdrantClient
 from app.infrastructure.openai_client import OpenAIClient
 from app.domain.rag_service import RAGService
 from app.domain.agent_service import AgentService
 from app.domain.metrics_service import MetricsService
 from app.domain.rag_document_service import RAGDocumentService
-from app.domain.rag_ingestion_service import RAGIngestionService
 from app.domain.data_analysis_service import DataAnalysisService
 from app.middleware.auth_middleware import AuthMiddleware
 from pydantic import BaseModel, Field
@@ -28,6 +27,12 @@ import json
 import html
 import json
 import re
+import hashlib
+import tempfile
+import uuid
+from pathlib import Path
+
+from app.domain.document_ingestion import extract_text, chunk_text
 
 # Configurar logging
 logging.basicConfig(
@@ -39,6 +44,7 @@ logger = logging.getLogger(__name__)
 # Instâncias globais
 agent_loader: AgentLoader = None
 redis_client: RedisClient = None
+qdrant_client: QdrantClient = None
 openai_client: OpenAIClient = None
 agent_service: AgentService = None
 metrics_service: MetricsService = None
@@ -49,7 +55,7 @@ data_analysis_service: DataAnalysisService = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gerencia ciclo de vida da aplicação"""
-    global agent_loader, redis_client, openai_client, agent_service
+    global agent_loader, redis_client, qdrant_client, openai_client, agent_service
     global metrics_service, rag_document_service, data_analysis_service
     
     # Startup
@@ -59,14 +65,17 @@ async def lifespan(app: FastAPI):
     agent_loader = AgentLoader()
     redis_client = RedisClient()
     await redis_client.connect()
+
+    qdrant_client = QdrantClient()
+    await qdrant_client.connect()
     
     openai_client = OpenAIClient()
     
-    rag_service = RAGService(redis_client, openai_client)
+    rag_service = RAGService(redis_client, openai_client, qdrant_client=qdrant_client)
     data_analysis_service = DataAnalysisService()
     agent_service = AgentService(redis_client, openai_client, rag_service, data_analysis_service)
     metrics_service = MetricsService(redis_client)
-    rag_document_service = RAGDocumentService(redis_client, openai_client)
+    rag_document_service = RAGDocumentService(redis_client, openai_client, qdrant_client=qdrant_client)
     
     # Carrega arquivos de análise de dados para agentes existentes
     agents = agent_loader.list_agents()
@@ -81,6 +90,11 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down application...")
+    try:
+        if qdrant_client:
+            await qdrant_client.disconnect()
+    except Exception:
+        pass
     await redis_client.disconnect()
     logger.info("Application shut down")
 
@@ -236,7 +250,6 @@ async def webhook_entry(agent_id: str, request: Request):
     start_time = time.time()
     success = False
     tokens_used = None
-    stream = False
     
     try:
         # Parse do body (assumindo JSON)
@@ -287,43 +300,27 @@ async def webhook_entry(agent_id: str, request: Request):
         
         # Recupera histórico de mensagens (já sanitizado acima)
         
-        def estimate_tokens(text: str) -> int:
-            if not text:
-                return 0
-            return max(1, int((len(text) + 3) / 4))
-
         # Verifica se deve usar streaming
         stream = body.get("stream", False)
         
         if stream:
+            # Stream direto via SSE
+            # Nota: Em streaming, não temos tokens até o final, então não registramos métricas aqui
             async def generate():
-                nonlocal success, tokens_used
-                assistant_text_parts = []
+                nonlocal success
                 try:
                     async for token in agent_service.process_message(
                         agent_config, message, stream=True, history=history
                     ):
-                        if isinstance(token, str) and token:
-                            assistant_text_parts.append(token)
                         yield f"data: {json.dumps(token, ensure_ascii=False)}\n\n"
                     success = True
                 except Exception as e:
                     logger.error(f"Error in stream: {e}", exc_info=True)
                     yield f"data: {json.dumps(f'[ERRO: {str(e)}]', ensure_ascii=False)}\n\n"
                     success = False
-                finally:
-                    if metrics_service and 'message' in locals():
-                        response_time = time.time() - start_time
-                        tokens_used = estimate_tokens(message.text) + estimate_tokens("".join(assistant_text_parts))
-                        await metrics_service.record_message(
-                            agent_id=agent_id,
-                            user_id=message.user_id,
-                            channel=message.channel.value,
-                            response_time=response_time,
-                            tokens_used=tokens_used,
-                            success=success
-                        )
             
+            # Para streaming, não registramos métricas aqui pois não temos tokens
+            # As métricas de streaming podem ser registradas no cliente ou via webhook
             return StreamingResponse(
                 generate(),
                 media_type="text/event-stream",
@@ -355,6 +352,18 @@ async def webhook_entry(agent_id: str, request: Request):
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         success = False
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Registra métricas
+        if metrics_service and not stream:
+            response_time = time.time() - start_time
+            await metrics_service.record_message(
+                agent_id=agent_id,
+                user_id=message.user_id if 'message' in locals() else "unknown",
+                channel=message.channel.value if 'message' in locals() else "web",
+                response_time=response_time,
+                tokens_used=tokens_used,
+                success=success
+            )
 
 
 @app.get("/agents")
@@ -388,6 +397,38 @@ async def get_agent(agent_id: str):
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
     
     return agent_config.dict()
+
+
+@app.put("/agents/{agent_id}")
+async def update_agent(agent_id: str, agent: AgentConfig):
+    """Atualiza um agente existente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    if agent.id != agent_id:
+        raise HTTPException(status_code=400, detail="Agent ID mismatch")
+
+    if not agent_loader.get_agent(agent_id):
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+
+    success = agent_loader.save_agent(agent)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update agent")
+
+    return {"status": "updated", "agent_id": agent_id, "agent": agent.dict()}
+
+
+@app.delete("/agents/{agent_id}")
+async def delete_agent(agent_id: str):
+    """Exclui um agente"""
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    success = agent_loader.delete_agent(agent_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+
+    return {"status": "deleted", "agent_id": agent_id}
 
 
 @app.post("/agents/{agent_id}/reload")
@@ -455,8 +496,28 @@ class DocumentCreate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+@app.get("/rag/indexes")
+async def list_rag_indexes():
+    if not agent_loader:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    indexes = set()
+    for agent in agent_loader.list_agents().values():
+        if agent.rag and getattr(agent.rag, "index_name", None):
+            indexes.add(agent.rag.index_name)
+
+    try:
+        if qdrant_client and qdrant_client.client:
+            for name in await qdrant_client.list_collections():
+                indexes.add(name)
+    except Exception:
+        pass
+
+    return {"indexes": sorted(indexes)}
+
+
 @app.post("/rag/{index_name}/documents")
-async def create_document(index_name: str, document: DocumentCreate):
+async def create_document(index_name: str, document: DocumentCreate, backend: str = "qdrant"):
     """Adiciona um documento ao índice RAG"""
     if not rag_document_service:
         raise HTTPException(status_code=503, detail="RAG document service not initialized")
@@ -465,7 +526,8 @@ async def create_document(index_name: str, document: DocumentCreate):
         doc_id = await rag_document_service.add_document(
             index_name=index_name,
             content=document.content,
-            metadata=document.metadata
+            metadata=document.metadata,
+            backend=backend,
         )
         return {"status": "created", "document_id": doc_id, "index_name": index_name}
     except Exception as e:
@@ -474,22 +536,22 @@ async def create_document(index_name: str, document: DocumentCreate):
 
 
 @app.get("/rag/{index_name}/documents")
-async def list_documents(index_name: str, limit: int = 100):
+async def list_documents(index_name: str, limit: int = 100, backend: str = "qdrant"):
     """Lista documentos de um índice"""
     if not rag_document_service:
         raise HTTPException(status_code=503, detail="RAG document service not initialized")
     
-    documents = await rag_document_service.list_documents(index_name, limit)
+    documents = await rag_document_service.list_documents(index_name, limit, backend=backend)
     return {"index_name": index_name, "documents": documents, "count": len(documents)}
 
 
 @app.delete("/rag/{index_name}/documents/{document_id}")
-async def delete_document(index_name: str, document_id: str):
+async def delete_document(index_name: str, document_id: str, backend: str = "qdrant"):
     """Remove um documento do índice"""
     if not rag_document_service:
         raise HTTPException(status_code=503, detail="RAG document service not initialized")
     
-    success = await rag_document_service.delete_document(index_name, document_id)
+    success = await rag_document_service.delete_document(index_name, document_id, backend=backend)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found")
     
@@ -497,22 +559,97 @@ async def delete_document(index_name: str, document_id: str):
 
 
 @app.get("/rag/{index_name}/stats")
-async def get_index_stats(index_name: str):
+async def get_index_stats(index_name: str, backend: str = "qdrant"):
     """Obtém estatísticas de um índice"""
     if not rag_document_service:
         raise HTTPException(status_code=503, detail="RAG document service not initialized")
     
-    return await rag_document_service.get_index_stats(index_name)
+    return await rag_document_service.get_index_stats(index_name, backend=backend)
 
 
 @app.post("/rag/{index_name}/search")
-async def search_documents(index_name: str, query: str, top_k: int = 5):
+async def search_documents(index_name: str, query: str, top_k: int = 5, backend: str = "qdrant"):
     """Busca documentos similares"""
     if not rag_document_service:
         raise HTTPException(status_code=503, detail="RAG document service not initialized")
     
-    results = await rag_document_service.search_documents(index_name, query, top_k)
+    results = await rag_document_service.search_documents(index_name, query, top_k, backend=backend)
     return {"index_name": index_name, "query": query, "results": results}
+
+
+@app.post("/rag/{index_name}/files")
+async def upload_rag_file(
+    index_name: str,
+    file: UploadFile = File(...),
+    backend: str = Form("qdrant"),
+    chunk_size: int = Form(1500),
+    overlap: int = Form(300),
+    metadata_json: Optional[str] = Form(None),
+):
+    if not rag_document_service:
+        raise HTTPException(status_code=503, detail="RAG document service not initialized")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    metadata: Dict[str, Any] = {}
+    if metadata_json and metadata_json.strip():
+        try:
+            metadata = json.loads(metadata_json)
+        except Exception:
+            raise HTTPException(status_code=400, detail="metadata_json must be valid JSON")
+
+    suffix = Path(file.filename or "").suffix or ".bin"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(raw)
+            tmp_path = tmp.name
+
+        text = extract_text(Path(tmp_path))
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="No text extracted from file")
+
+        chunks = chunk_text(text, chunk_size=chunk_size, overlap=overlap)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No chunks generated from extracted text")
+
+        file_hash = hashlib.sha256(raw).hexdigest()
+        created_ids: List[str] = []
+        for i, chunk in enumerate(chunks):
+            point_hash = hashlib.sha256(f"{index_name}:{file_hash}:{i}".encode("utf-8")).hexdigest()
+            doc_id = str(uuid.UUID(hex=point_hash[:32]))
+            doc_metadata = {
+                **metadata,
+                "source_file": file.filename,
+                "file_size": len(raw),
+                "file_hash_sha256": file_hash,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+            }
+            created_id = await rag_document_service.add_document(
+                index_name=index_name,
+                content=chunk,
+                metadata=doc_metadata,
+                document_id=doc_id,
+                backend=backend,
+            )
+            created_ids.append(created_id)
+
+        return {
+            "status": "uploaded",
+            "index_name": index_name,
+            "filename": file.filename,
+            "chunks": len(chunks),
+            "document_ids": created_ids,
+        }
+    finally:
+        try:
+            if tmp_path:
+                os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 # ==================== DASHBOARD ====================
@@ -532,7 +669,6 @@ class AgentCreateRequest(BaseModel):
     data_analysis: Optional[Dict[str, Any]] = None
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     webhook_output_url: Optional[str] = None
-    auto_ingest_documents: bool = False
 
 
 @app.post("/agents/create")
@@ -584,29 +720,6 @@ async def create_agent(request: AgentCreateRequest):
         # Carrega arquivos de análise de dados se houver
         if data_analysis_config and data_analysis_config.enabled and data_analysis_config.files:
             data_analysis_service.load_agent_files(request.id, data_analysis_config.files)
-
-        if request.auto_ingest_documents and rag_config and rag_config.documents_dir:
-            async def _run_ingest() -> None:
-                try:
-                    ingestion_service = RAGIngestionService(redis_client, openai_client)
-                    project_root = Path(__file__).parent.parent
-                    target_dir = (project_root / rag_config.documents_dir).resolve()
-                    if project_root.resolve() not in target_dir.parents and target_dir != project_root.resolve():
-                        logger.error("Refusing to ingest documents outside project root")
-                        return
-                    await ingestion_service.ingest_directory(
-                        index_name=rag_config.index_name,
-                        directory=target_dir,
-                        recursive=True,
-                        chunk_size=rag_config.chunk_size,
-                        overlap=rag_config.overlap,
-                        skip_existing=True,
-                    )
-                except Exception as e:
-                    logger.error(f"Error ingesting documents for agent {request.id}: {e}", exc_info=True)
-
-            import asyncio
-            asyncio.create_task(_run_ingest())
         
         return {
             "status": "created",
@@ -619,63 +732,6 @@ async def create_agent(request: AgentCreateRequest):
     except Exception as e:
         logger.error(f"Error creating agent: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-class AgentRAGIngestRequest(BaseModel):
-    documents_dir: Optional[str] = None
-    recursive: bool = True
-    chunk_size: Optional[int] = None
-    overlap: Optional[int] = None
-    skip_existing: bool = True
-
-
-@app.post("/agents/{agent_id}/rag/ingest")
-async def ingest_agent_rag(agent_id: str, request: AgentRAGIngestRequest):
-    if not agent_loader or not rag_document_service:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-
-    agent_config = agent_loader.get_agent(agent_id)
-    if not agent_config:
-        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
-    if not agent_config.rag:
-        raise HTTPException(status_code=400, detail=f"Agent {agent_id} does not have RAG enabled")
-
-    documents_dir = request.documents_dir or agent_config.rag.documents_dir
-    if not documents_dir:
-        raise HTTPException(status_code=400, detail="documents_dir not provided and not configured on agent")
-
-    project_root = Path(__file__).parent.parent
-    target_dir = (project_root / documents_dir).resolve()
-    if project_root.resolve() not in target_dir.parents and target_dir != project_root.resolve():
-        raise HTTPException(status_code=400, detail="documents_dir must be inside the project directory")
-
-    if not target_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Directory not found: {documents_dir}")
-
-    ingestion_service = RAGIngestionService(redis_client, openai_client)
-    result = await ingestion_service.ingest_directory(
-        index_name=agent_config.rag.index_name,
-        directory=target_dir,
-        recursive=request.recursive,
-        chunk_size=request.chunk_size or agent_config.rag.chunk_size,
-        overlap=request.overlap or agent_config.rag.overlap,
-        skip_existing=request.skip_existing,
-    )
-
-    stats = await rag_document_service.get_index_stats(agent_config.rag.index_name)
-    return {
-        "status": "ok",
-        "agent_id": agent_id,
-        "index_name": agent_config.rag.index_name,
-        "documents_dir": documents_dir,
-        "result": {
-            "files_processed": result.files_processed,
-            "chunks_indexed": result.chunks_indexed,
-            "chunks_skipped": result.chunks_skipped,
-            "errors": result.errors,
-        },
-        "index_stats": stats,
-    }
 
 
 # ==================== AGENT FILES ====================
