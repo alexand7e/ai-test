@@ -62,3 +62,4 @@ Thumbs.db
 # Project specific
 plano.md
 example_test.py
+data/*
