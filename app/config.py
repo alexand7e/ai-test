@@ -45,6 +45,7 @@ try:
         class Config:
             env_file = ".env"
             case_sensitive = False
+            extra = "ignore"
 
 except Exception:
     class Settings:

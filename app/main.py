@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 import logging
 import os
 # Rate limiting será implementado se necessário
-# from app.middleware.rate_limiter import RateLimiterMiddleware
+from app.middleware.rate_limiter import RateLimiterMiddleware
+import bleach
 
 from app.config import settings
 from app.models import WebhookMessage, MessageChannel, AgentConfig, AgentRAGConfig, DataAnalysisConfig
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 # Instâncias globais
 agent_loader: AgentLoader = None
-redis_client: RedisClient = None
+redis_client = RedisClient()
 qdrant_client: QdrantClient = None
 openai_client: OpenAIClient = None
 agent_service: AgentService = None
@@ -76,7 +77,8 @@ async def lifespan(app: FastAPI):
     
     # Inicializa componentes
     agent_loader = AgentLoader()
-    redis_client = RedisClient()
+    await agent_loader.load_all_agents()
+    # redis_client already instantiated globally
     await redis_client.connect()
 
     qdrant_client = QdrantClient()
@@ -140,7 +142,13 @@ app.add_middleware(
     jwt_issuer=settings.jwt_issuer
 )
 
-# Rate Limiting será adicionado dinamicamente no lifespan
+# Rate Limiting
+app.add_middleware(
+    RateLimiterMiddleware,
+    redis_client=redis_client, 
+    # Use lazy init or just new instance. RedisClient handles its own pool.
+    requests_per_minute=60
+)
 
 # Servir arquivos estáticos
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -568,23 +576,19 @@ async def webhook_entry(agent_id: str, request: Request):
         body = await request.json()
         
         # Sanitiza inputs
+        # Sanitiza inputs com Bleach
         def sanitize_input(value):
-            """Sanitiza entrada de dados"""
+            """Sanitiza entrada de dados usando Bleach"""
             if value is None:
                 return None
             if isinstance(value, str):
-                # Remove tags HTML perigosas primeiro
-                value = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', value, flags=re.IGNORECASE)
-                value = re.sub(r'<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>', '', value, flags=re.IGNORECASE)
-                value = re.sub(r'javascript:', '', value, flags=re.IGNORECASE)
-                value = re.sub(r'on\w+\s*=', '', value, flags=re.IGNORECASE)
-                # Remove caracteres de controle
-                value = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', value)
-                # Limita tamanho
-                if len(value) > 10000:
-                    value = value[:10000]
-                # Escapa HTML para segurança
-                value = html.escape(value)
+                # Permite apenas tags e atributos seguros
+                return bleach.clean(
+                    value, 
+                    tags=['b', 'i', 'u', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'code', 'pre'],
+                    attributes={'a': ['href', 'title', 'target']},
+                    strip=True
+                )
             elif isinstance(value, dict):
                 return {k: sanitize_input(v) for k, v in value.items()}
             elif isinstance(value, list):
@@ -596,7 +600,7 @@ async def webhook_entry(agent_id: str, request: Request):
         if history:
             history = sanitize_input(history)
         
-        # Normaliza mensagem (simplificado - em produção, validar conforme provedor)
+        # Normaliza mensagem
         sanitized_text = sanitize_input(body.get("text", ""))
         sanitized_user_id = sanitize_input(body.get("user_id", "unknown"))
         sanitized_metadata = sanitize_input(body.get("metadata", {}))
@@ -749,7 +753,7 @@ async def reload_agent(agent_id: str):
     if not agent_loader:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
-    success = agent_loader.reload_agent(agent_id)
+    success = await agent_loader.reload_agent(agent_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
     
@@ -768,7 +772,7 @@ async def reload_all_agents():
     if not agent_loader:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
-    agent_loader.reload()
+    await agent_loader.reload()
     
     # Recarrega arquivos de análise de dados para todos os agentes
     if data_analysis_service:
