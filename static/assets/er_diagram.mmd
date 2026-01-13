@@ -1,0 +1,43 @@
+erDiagram
+  Grupo ||--o{ Usuario : possui
+  Grupo ||--o{ Agente : disponibiliza
+  Usuario ||--o{ Agente : cria
+  Usuario ||--o{ AccessToken : emite
+
+  Grupo {
+    uuid id PK
+    string nome
+    string descricao
+    datetime createdAt
+    datetime updatedAt
+  }
+
+  Usuario {
+    uuid id PK
+    string email UK
+    string senhaHash
+    enum nivel
+    uuid grupoId FK
+    datetime createdAt
+    datetime updatedAt
+  }
+
+  Agente {
+    uuid id PK
+    string nome
+    json configuracoes
+    vector vetorEmbedding
+    uuid grupoId FK
+    uuid criadoPorId FK
+    datetime createdAt
+    datetime updatedAt
+  }
+
+  AccessToken {
+    uuid id PK
+    string jti UK
+    uuid usuarioId FK
+    datetime expiresAt
+    datetime revokedAt
+    datetime createdAt
+  }
