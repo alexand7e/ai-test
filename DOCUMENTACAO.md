@@ -822,6 +822,35 @@ docker-compose up --build
 
 ---
 
+## Banco de Dados (Neon + Prisma + pgvector)
+
+### Configuração
+
+- O acesso ao PostgreSQL é feito via `DATABASE_URL` (Neon).
+- Para JWT, configure `JWT_SECRET`.
+- Para criptografia de campos sensíveis em JSON, configure `ENCRYPTION_KEY` (Fernet).
+
+### Migrações
+
+- Migração inicial (extensões + tabelas + índice vetorial): `prisma/migrations/0001_init/migration.sql`.
+- `pgvector` é habilitado via `CREATE EXTENSION IF NOT EXISTS vector;`.
+- Índice vetorial em `Agente.vetorEmbedding` usa HNSW com `vector_cosine_ops` e filtro `IS NOT NULL`.
+
+### Entidades e Relacionamentos
+
+- `Grupo (1) → (N) Usuario` via `Usuario.grupoId`
+- `Grupo (1) → (N) Agente` via `Agente.grupoId`
+- `Usuario (1) → (N) Agente` via `Agente.criadoPorId`
+- `Usuario (1) → (N) AccessToken` via `AccessToken.usuarioId`
+
+### Permissões
+
+- `ADMIN_GERAL`: CRUD de `Grupo` e `Usuario` (atribuindo usuário a grupos e níveis).
+- `ADMIN` (grupo): CRUD de `Agente` restrito ao próprio `grupoId`.
+- `NORMAL`: leitura/listagem e busca vetorial dos `Agente` do próprio `grupoId`.
+
+---
+
 ## Próximos Passos
 
 - [ ] Implementação completa de busca vetorial no Redis
@@ -843,6 +872,6 @@ MIT
 
 ---
 
-**Documentação gerada em:** 2024  
+**Documentação gerada em:** 2026 
 **Versão do Sistema:** 1.0.0
 

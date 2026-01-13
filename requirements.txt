@@ -15,4 +15,8 @@ openpyxl>=3.1.0
 python-docx>=1.1.0
 PyPDF2>=3.0.0
 qdrant-client>=1.8.0
-
+prisma>=0.11.0
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+cryptography>=42.0.0
+ 

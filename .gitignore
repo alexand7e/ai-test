@@ -35,3 +35,5 @@ data/*
 agents/*
 
 scripts/*
+
+.github
