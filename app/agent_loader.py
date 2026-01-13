@@ -76,6 +76,8 @@ class AgentLoader:
                     config_data['id'] = db_agent.id
                     if db_agent.nome:
                          config_data['nome'] = db_agent.nome
+                    if db_agent.grupoId:
+                         config_data['grupoId'] = db_agent.grupoId
                          
                     # Create AgentConfig object
                     agent = AgentConfig(**config_data)

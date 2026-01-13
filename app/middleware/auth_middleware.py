@@ -1,7 +1,8 @@
 """Middleware de autenticação"""
 from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
+
 import logging
 from datetime import datetime, timezone
 
@@ -26,6 +27,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/health",
             "/static",
             "/login",
+            "/api/setup",
             "/api/auth/login",
             "/api/auth/verify"
         ]
@@ -59,13 +61,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 jti = payload.get("jti")
                 token_row = await prisma_db.db.accesstoken.find_unique(where={"jti": jti})
                 if not token_row or token_row.revokedAt is not None:
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revogado ou inválido")
+                    # Token removido/revogado
+                    if request.url.path.startswith("/api/") or request.url.path.startswith("/webhooks/"):
+                        return JSONResponse(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            content={"detail": "Token revogado ou inválido"}
+                        )
+                    from starlette.responses import RedirectResponse
+                    return RedirectResponse(url="/login", status_code=302)
 
                 expires_at = token_row.expiresAt
                 if expires_at.tzinfo is None:
                     expires_at = expires_at.replace(tzinfo=timezone.utc)
                 if expires_at <= datetime.now(timezone.utc):
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expirado")
+                    # Token expirado
+                    if request.url.path.startswith("/api/") or request.url.path.startswith("/webhooks/"):
+                        return JSONResponse(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            content={"detail": "Token expirado"}
+                        )
+                    from starlette.responses import RedirectResponse
+                    return RedirectResponse(url="/login", status_code=302)
 
                 request.state.user = {
                     "id": payload.get("sub"),
@@ -74,9 +90,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "jti": jti,
                 }
                 return await call_next(request)
-            except HTTPException:
-                raise
             except Exception:
+                # Se falhar decode/validação, considera inválido
                 token = None
 
         # Se não tiver token configurado, permite acesso (modo desenvolvimento)
@@ -87,9 +102,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not token or (self.access_token and token != self.access_token):
             # Se for requisição de API, retorna 401
             if request.url.path.startswith("/api/") or request.url.path.startswith("/webhooks/"):
-                raise HTTPException(
+                return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token de acesso inválido ou ausente"
+                    content={"detail": "Token de acesso inválido ou ausente"}
                 )
             # Se for página HTML, redireciona para login
             from starlette.responses import RedirectResponse

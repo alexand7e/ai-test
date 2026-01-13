@@ -80,6 +80,10 @@ async def lifespan(app: FastAPI):
     await agent_loader.load_all_agents()
     # redis_client already instantiated globally
     await redis_client.connect()
+    
+    # Bootstrap Admin - REMOVED (Replaced by Interactive Setup)
+    # Logic now resides in POST /api/setup
+
 
     qdrant_client = QdrantClient()
     await qdrant_client.connect()
@@ -158,7 +162,19 @@ if os.path.exists(static_dir):
 
 @app.get("/")
 async def root():
-    """Serve a página inicial do chat"""
+    """Serve a página inicial do chat (ou Setup se DB vazio)"""
+    # Check if setup is needed
+    try:
+        user_count = await prisma_db.db.usuario.count()
+        if user_count == 0:
+            static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+            setup_path = os.path.join(static_dir, "setup.html")
+            if os.path.exists(setup_path):
+                return FileResponse(setup_path)
+            return {"message": "Setup required. Please create initial admin."}
+    except Exception:
+        pass
+        
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
@@ -168,12 +184,59 @@ async def root():
 
 @app.get("/login")
 async def login_page():
-    """Serve a página de login"""
+    """Serve a página de login (ou Setup se DB vazio)"""
+    try:
+        user_count = await prisma_db.db.usuario.count()
+        if user_count == 0:
+            from starlette.responses import RedirectResponse
+            return RedirectResponse(url="/")
+    except Exception:
+        pass
+
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     login_path = os.path.join(static_dir, "login.html")
     if os.path.exists(login_path):
         return FileResponse(login_path)
     return {"message": "Login page not available"}
+
+
+class SetupRequest(BaseModel):
+    admin_name: str = Field(min_length=1)
+    admin_email: str = Field(min_length=5, max_length=320)
+    admin_password: str = Field(min_length=8)
+    group_name: str = Field(min_length=1, default="Administração")
+
+
+@app.post("/api/setup")
+async def setup_initial_admin(request: SetupRequest):
+    """Endpoint para configuração inicial (apenas se DB vazio)"""
+    user_count = await prisma_db.db.usuario.count()
+    if user_count > 0:
+        raise HTTPException(status_code=403, detail="Setup already completed. Users exist.")
+
+    try:
+        # Create Default Group
+        grupo = await prisma_db.db.grupo.create(
+            data={
+                "nome": request.group_name,
+                "descricao": "Grupo de administração do sistema"
+            }
+        )
+        
+        # Create Admin User
+        admin_user = await prisma_db.db.usuario.create(
+            data={
+                "email": request.admin_email,
+                "senhaHash": hash_password(request.admin_password),
+                "nivel": "ADMIN_GERAL",
+                "grupoId": grupo.id
+            }
+        )
+        logger.info(f"Setup completed. Admin created: {admin_user.email}")
+        return {"success": True, "message": "Setup completed successfully"}
+    except Exception as e:
+        logger.error(f"Setup failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class LoginRequest(BaseModel):
@@ -683,21 +746,56 @@ async def webhook_entry(agent_id: str, request: Request):
 
 
 @app.get("/agents")
-async def list_agents():
-    """Lista todos os agentes configurados"""
+async def list_agents(request: Request):
+    """Lista todos os agentes configurados (Filtrado por grupo se não for ADMIN_GERAL)"""
     if not agent_loader:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
+    # Try to get user from request state (set by AuthMiddleware)
+    user = getattr(request.state, "user", None)
+    
     agents = agent_loader.list_agents()
+    
+    # Filter agents
+    filtered_agents = []
+    for agent in agents.values():
+        # If user is logged in
+        if user:
+            # ADMIN_GERAL sees all
+            if user["nivel"] == "ADMIN_GERAL":
+                filtered_agents.append(agent)
+            # Others see only their group's agents OR agents with no group (legacy/file-based might have no group)
+            # Decisão: Agentes de arquivo (sem grupo) são visíveis para todos ou apenas Admin?
+            # Por segurança, agentes sem grupo (arquivos) visíveis apenas para Admin Geral seria melhor, mas
+            # para compatibilidade, vamos permitir que se 'grupoId' for None, seja visível? 
+            # Melhor: Agentes do DB tem grupo. Agentes de arquivo não.
+            # Vamos assumir: Se tem grupoId, deve bater. Se não tem, é público/sistema?
+            # Vamos restringir: Se não tem grupoId (arquivo), mostra pra todo mundo (legacy) OU apenas admin.
+            # Vamos mostrar legacy para todos por enquanto.
+            elif agent.grupoId == user["grupoId"] or agent.grupoId is None:
+                filtered_agents.append(agent)
+        else:
+             # Authentication is enforced for /agents path in middleware?
+             # Middleware list: /api/* and /webhooks/* return 401. 
+             # /agents is NOT /api/... 
+             # Check AuthMiddleware dispatch.
+             # If path is not public and not /api, it redirects to login (line 95).
+             # So user SHOULD be present if browser access.
+             # If accessible via API token, it returns 401.
+             # So user is practically guaranteed if we reach here and it's protected.
+             # Assume filtered if user is None (which shouldn't happen if protected properly)
+             filtered_agents.append(agent)
+
     return {
         "agents": [
             {
                 "id": agent.id,
                 "model": agent.model,
                 "has_rag": agent.rag is not None,
-                "tools_count": len(agent.tools)
+                "tools_count": len(agent.tools),
+                "grupoId": agent.grupoId
             }
-            for agent in agents.values()
+            for agent in filtered_agents
         ]
     }
 

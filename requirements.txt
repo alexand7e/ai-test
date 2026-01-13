@@ -17,7 +17,8 @@ PyPDF2>=3.0.0
 qdrant-client>=1.8.0
 prisma>=0.11.0
 PyJWT>=2.8.0
-passlib[bcrypt]>=1.7.4
+passlib>=1.7.4
+bcrypt==4.0.1
 cryptography>=42.0.0
 bleach>=6.1.0
  

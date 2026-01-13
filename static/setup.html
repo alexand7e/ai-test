@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuração Inicial - SIA-Piauí</title>
+    <link rel="icon" type="image/svg+xml" href="/static/assets/favicon.svg">
+    <link rel="stylesheet" href="/static/ui/base.css">
+    <link rel="stylesheet" href="/static/login.css">
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <div class="logo">
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="40" height="40" rx="8" fill="var(--primary-color)" />
+                        <path
+                            d="M20 10C14.48 10 10 14.48 10 20C10 25.52 14.48 30 20 30C25.52 30 30 25.52 30 20C30 14.48 25.52 10 20 10ZM20 28C15.58 28 12 24.42 12 20C12 15.58 15.58 12 20 12C24.42 12 28 15.58 28 20C28 24.42 24.42 28 20 28Z"
+                            fill="white" />
+                        <path
+                            d="M20 14C16.69 14 14 16.69 14 20C14 23.31 16.69 26 20 26C23.31 26 26 23.31 26 20C26 16.69 23.31 14 20 14Z"
+                            fill="white" fill-opacity="0.5" />
+                    </svg>
+                </div>
+                <h1>Bem-vindo!</h1>
+                <p>Configuração do Superusuário</p>
+            </div>
+
+            <form id="setup-form" class="login-form">
+                <div class="login-form-group">
+                    <label for="admin-name">Nome do Admin</label>
+                    <input type="text" id="admin-name" required placeholder="Seu nome">
+                </div>
+
+                <div class="login-form-group">
+                    <label for="admin-email">E-mail</label>
+                    <input type="email" id="admin-email" required placeholder="admin@exemplo.com">
+                </div>
+
+                <div class="login-form-group">
+                    <label for="admin-password">Senha</label>
+                    <input type="password" id="admin-password" required minlength="8" placeholder="Mínimo 8 caracteres">
+                </div>
+
+                <div class="login-form-group">
+                    <label for="group-name">Nome do Grupo</label>
+                    <input type="text" id="group-name" required value="Administração">
+                </div>
+
+                <div class="error-message" id="error-message"></div>
+
+                <button type="submit" id="setup-button" class="login-button">
+                    Configurar e Acessar
+                </button>
+            </form>
+        </div>
+    </div>
+    <script src="/static/setup.js"></script>
+</body>
+
+</html>

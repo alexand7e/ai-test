@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,53 +9,64 @@
     <link rel="stylesheet" href="/static/ui/base.css">
     <link rel="stylesheet" href="/static/admin.css">
 </head>
+
 <body>
     <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
         <symbol id="icon-plus" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </symbol>
         <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none">
-            <path d="M21 12a9 9 0 1 1-2.64-6.36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M21 3v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M21 3v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
         </symbol>
         <symbol id="icon-chat" viewBox="0 0 24 24" fill="none">
-            <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </symbol>
         <symbol id="icon-metrics" viewBox="0 0 24 24" fill="none">
-            <path d="M4 19V5M20 19V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M7 14l3-3 3 2 4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 19V5M20 19V5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M7 14l3-3 3 2 4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
         </symbol>
         <symbol id="icon-users" viewBox="0 0 24 24" fill="none">
-            <path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z" stroke="currentColor" stroke-width="2"/>
-            <path d="M4 20a8 8 0 0 1 16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z" stroke="currentColor" stroke-width="2" />
+            <path d="M4 20a8 8 0 0 1 16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </symbol>
         <symbol id="icon-database" viewBox="0 0 24 24" fill="none">
-            <path d="M12 3c-4.97 0-9 1.79-9 4s4.03 4 9 4 9-1.79 9-4-4.03-4-9-4Z" stroke="currentColor" stroke-width="2"/>
-            <path d="M3 7v10c0 2.21 4.03 4 9 4s9-1.79 9-4V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M3 12c0 2.21 4.03 4 9 4s9-1.79 9-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 3c-4.97 0-9 1.79-9 4s4.03 4 9 4 9-1.79 9-4-4.03-4-9-4Z" stroke="currentColor"
+                stroke-width="2" />
+            <path d="M3 7v10c0 2.21 4.03 4 9 4s9-1.79 9-4V7" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" />
+            <path d="M3 12c0 2.21 4.03 4 9 4s9-1.79 9-4" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" />
         </symbol>
         <symbol id="icon-edit" viewBox="0 0 24 24" fill="none">
-            <path d="M12 20h9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 20h9" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
         </symbol>
         <symbol id="icon-trash" viewBox="0 0 24 24" fill="none">
-            <path d="M3 6h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M8 6V4h8v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M6 6l1 16h10l1-16" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M3 6h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M8 6V4h8v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            <path d="M6 6l1 16h10l1-16" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+            <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </symbol>
         <symbol id="icon-file" viewBox="0 0 24 24" fill="none">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </symbol>
         <symbol id="icon-upload" viewBox="0 0 24 24" fill="none">
-            <path d="M12 16V4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M7 9l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M20 20H4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 16V4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M7 9l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            <path d="M20 20H4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </symbol>
         <symbol id="icon-search" viewBox="0 0 24 24" fill="none">
-            <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" stroke-width="2"/>
-            <path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" stroke-width="2" />
+            <path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </symbol>
     </svg>
     <div id="app-nav"></div>
@@ -63,15 +75,21 @@
             <h1>Admin - SIA-Piauí</h1>
             <div class="header-actions">
                 <a href="/create-agent" class="btn btn-primary btn-with-icon">
-                    <svg class="icon"><use href="#icon-plus"></use></svg>
+                    <svg class="icon">
+                        <use href="#icon-plus"></use>
+                    </svg>
                     Criar Agente
                 </a>
                 <button id="refresh-btn" class="btn btn-primary btn-with-icon">
-                    <svg class="icon"><use href="#icon-refresh"></use></svg>
+                    <svg class="icon">
+                        <use href="#icon-refresh"></use>
+                    </svg>
                     Atualizar
                 </button>
                 <a href="/" class="btn btn-secondary btn-with-icon">
-                    <svg class="icon"><use href="#icon-chat"></use></svg>
+                    <svg class="icon">
+                        <use href="#icon-chat"></use>
+                    </svg>
                     Chat
                 </a>
             </div>
@@ -81,7 +99,9 @@
             <!-- Métricas Globais -->
             <section class="metrics-section">
                 <h2 class="section-title">
-                    <svg class="icon icon-title"><use href="#icon-metrics"></use></svg>
+                    <svg class="icon icon-title">
+                        <use href="#icon-metrics"></use>
+                    </svg>
                     Métricas Globais
                 </h2>
                 <div class="metrics-grid" id="global-metrics">
@@ -100,10 +120,39 @@
                 </div>
             </section>
 
+            <!-- Gerenciamento de Usuários (Admin Geral apenas) -->
+            <section class="users-section" id="users-section" style="display: none;">
+                <h2 class="section-title">
+                    <svg class="icon icon-title">
+                        <use href="#icon-users"></use>
+                    </svg>
+                    Gerenciamento de Usuários
+                    <button class="btn btn-small btn-primary" onclick="showCreateUserModal()">Novo Usuário</button>
+                    <button class="btn btn-small btn-secondary" onclick="showGroupsModal()">Gerenciar Grupos</button>
+                </h2>
+                <div class="table-container">
+                    <table class="data-table" id="users-table">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Nível</th>
+                                <th>Grupo</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Users loaded via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <!-- Agentes -->
             <section class="agents-section">
                 <h2 class="section-title">
-                    <svg class="icon icon-title"><use href="#icon-users"></use></svg>
+                    <svg class="icon icon-title">
+                        <use href="#icon-users"></use>
+                    </svg>
                     Agentes
                 </h2>
                 <div class="agents-grid" id="agents-grid">
@@ -114,7 +163,9 @@
             <!-- Gerenciamento de Documentos RAG -->
             <section class="rag-section">
                 <h2 class="section-title">
-                    <svg class="icon icon-title"><use href="#icon-database"></use></svg>
+                    <svg class="icon icon-title">
+                        <use href="#icon-database"></use>
+                    </svg>
                     Base Vetorial (RAG)
                 </h2>
                 <div class="rag-controls">
@@ -123,18 +174,25 @@
                         <select id="rag-index-select">
                             <option value="">Selecione um índice...</option>
                         </select>
-                        <button id="refresh-rag-btn" class="btn btn-secondary btn-small btn-with-icon" title="Atualizar índices">
-                            <svg class="icon"><use href="#icon-refresh"></use></svg>
+                        <button id="refresh-rag-btn" class="btn btn-secondary btn-small btn-with-icon"
+                            title="Atualizar índices">
+                            <svg class="icon">
+                                <use href="#icon-refresh"></use>
+                            </svg>
                             Atualizar
                         </button>
                     </div>
                     <div class="form-group">
                         <button id="add-doc-btn" class="btn btn-primary btn-with-icon">
-                            <svg class="icon"><use href="#icon-plus"></use></svg>
+                            <svg class="icon">
+                                <use href="#icon-plus"></use>
+                            </svg>
                             Adicionar Texto
                         </button>
                         <button id="upload-file-btn" class="btn btn-secondary btn-with-icon">
-                            <svg class="icon"><use href="#icon-upload"></use></svg>
+                            <svg class="icon">
+                                <use href="#icon-upload"></use>
+                            </svg>
                             Carregar Arquivo
                         </button>
                     </div>
@@ -144,7 +202,9 @@
                             <input id="rag-search-query" type="text" placeholder="Digite sua busca..." />
                             <input id="rag-search-topk" type="number" min="1" max="20" value="5" title="Top K" />
                             <button id="rag-search-btn" class="btn btn-secondary btn-with-icon">
-                                <svg class="icon"><use href="#icon-search"></use></svg>
+                                <svg class="icon">
+                                    <use href="#icon-search"></use>
+                                </svg>
                                 Buscar
                             </button>
                         </div>
@@ -172,7 +232,8 @@
                 </div>
                 <div class="form-group">
                     <label for="doc-metadata">Metadados (JSON opcional):</label>
-                    <textarea id="doc-metadata" rows="5" placeholder='{"source": "manual", "category": "geral"}'></textarea>
+                    <textarea id="doc-metadata" rows="5"
+                        placeholder='{"source": "manual", "category": "geral"}'></textarea>
                 </div>
                 <button type="submit" class="btn btn-primary">Adicionar</button>
             </form>
@@ -194,16 +255,67 @@
                 </div>
                 <div class="form-group">
                     <label for="file-metadata">Metadados (JSON opcional):</label>
-                    <textarea id="file-metadata" rows="4" placeholder='{"source":"upload","category":"geral"}'></textarea>
+                    <textarea id="file-metadata" rows="4"
+                        placeholder='{"source":"upload","category":"geral"}'></textarea>
                 </div>
                 <button type="submit" class="btn btn-primary">Carregar</button>
             </form>
         </div>
     </div>
 
+    <!-- Modal Novo Usuário -->
+    <div id="user-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="user-modal-close">&times;</span>
+            <h3>Novo Usuário</h3>
+            <form id="create-user-form">
+                <div class="form-group">
+                    <label for="user-email">E-mail</label>
+                    <input type="email" id="user-email" required placeholder="usuario@exemplo.com">
+                </div>
+                <div class="form-group">
+                    <label for="user-password">Senha</label>
+                    <input type="password" id="user-password" required minlength="8">
+                </div>
+                <div class="form-group">
+                    <label for="user-level">Nível</label>
+                    <select id="user-level" required>
+                        <option value="NORMAL">Usuário Normal</option>
+                        <option value="ADMIN">Admin de Grupo</option>
+                        <option value="ADMIN_GERAL">Admin Geral</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="user-group">Grupo</label>
+                    <select id="user-group" required>
+                        <option value="">Selecione...</option>
+                        <!-- Loaded via JS -->
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Criar Usuário</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Grupos -->
+    <div id="groups-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="groups-modal-close">&times;</span>
+            <h3>Gerenciar Grupos</h3>
+            <div class="form-group row">
+                <input type="text" id="new-group-name" placeholder="Nome do novo grupo">
+                <button id="create-group-btn" class="btn btn-secondary">Criar</button>
+            </div>
+            <ul id="groups-list" class="simple-list">
+                <!-- Loaded via JS -->
+            </ul>
+        </div>
+    </div>
+
     <script src="/static/ui/utils.js"></script>
     <script src="/static/ui/nav.js"></script>
     <script src="/static/admin.js"></script>
+    <script src="/static/admin_users.js"></script>
 </body>
-</html>
 
+</html>

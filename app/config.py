@@ -25,6 +25,9 @@ try:
         jwt_access_ttl_minutes: int = 60
         encryption_key: Optional[str] = None
         migrate_on_startup: bool = True
+        
+        migrate_on_startup: bool = True
+
 
         @field_validator("database_url", mode="before")
         @classmethod
@@ -68,6 +71,8 @@ except Exception:
             self.jwt_issuer = os.getenv("JWT_ISSUER", "ai-agent-api")
             self.jwt_access_ttl_minutes = int(os.getenv("JWT_ACCESS_TTL_MINUTES", "60"))
             self.encryption_key = os.getenv("ENCRYPTION_KEY") or None
+            self.migrate_on_startup = (os.getenv("MIGRATE_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes", "y"})
+            
             self.migrate_on_startup = (os.getenv("MIGRATE_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes", "y"})
 
         @staticmethod

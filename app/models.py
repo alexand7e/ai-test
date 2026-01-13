@@ -60,6 +60,7 @@ class AgentConfig(BaseModel):
     """Configuração completa de um agente"""
     id: str
     nome: Optional[str] = None  # Nome exibido do agente
+    grupoId: Optional[str] = None # ID do grupo proprietário do agente
     model: str = "Qwen/Qwen2.5-3B-Instruct"
     api_key: Optional[str] = None  # API key específica do agente (opcional, informativo)
     webhook_name: Optional[str] = None  # Nome do webhook personalizado para /webhook/{webhook_name}
