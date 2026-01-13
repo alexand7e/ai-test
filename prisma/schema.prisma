@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-py"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserLevel {
+  NORMAL
+  ADMIN
+  ADMIN_GERAL
+}
+
+model Grupo {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome      String
+  descricao String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  usuarios  Usuario[]
+  agentes   Agente[]
+
+  @@index([nome])
+}
+
+model Usuario {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String      @unique
+  senhaHash  String
+  nivel      UserLevel   @default(NORMAL)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  grupoId    String      @db.Uuid
+  grupo      Grupo       @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+
+  agentesCriados Agente[] @relation("AgenteCriadoPor")
+  tokens         AccessToken[]
+
+  @@index([grupoId])
+  @@index([nivel])
+}
+
+model Agente {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome          String
+  configuracoes Json
+  vetorEmbedding Unsupported("vector(1536)")?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  grupoId       String   @db.Uuid
+  grupo         Grupo    @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  criadoPorId   String   @db.Uuid
+  criadoPor     Usuario  @relation("AgenteCriadoPor", fields: [criadoPorId], references: [id], onDelete: Restrict)
+
+  @@index([grupoId])
+  @@index([criadoPorId])
+}
+
+model AccessToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jti       String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  usuarioId String   @db.Uuid
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([expiresAt])
+}
