@@ -20,6 +20,8 @@ from app.domain.metrics_service import MetricsService
 from app.domain.rag_document_service import RAGDocumentService
 from app.domain.data_analysis_service import DataAnalysisService
 from app.middleware.auth_middleware import AuthMiddleware
+from app.infrastructure import prisma_db
+from app.infrastructure.migration_runner import apply_migrations
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import time
@@ -33,6 +35,11 @@ import uuid
 from pathlib import Path
 
 from app.domain.document_ingestion import extract_text, chunk_text
+from app.security.passwords import verify_password, hash_password
+from app.security.jwt_service import create_access_token, decode_access_token
+from datetime import datetime, timezone
+from app.security.permissions import get_auth, require_admin_geral, require_admin_grupo
+from app.security.crypto import encrypt_str
 
 # Configurar logging
 logging.basicConfig(
@@ -60,6 +67,12 @@ async def lifespan(app: FastAPI):
     
     # Startup
     logger.info("Starting application...")
+
+    if settings.database_url:
+        os.environ["DATABASE_URL"] = settings.database_url
+        await prisma_db.connect()
+        if settings.migrate_on_startup:
+            await apply_migrations(prisma_db.db)
     
     # Inicializa componentes
     agent_loader = AgentLoader()
@@ -96,6 +109,10 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     await redis_client.disconnect()
+    try:
+        await prisma_db.disconnect()
+    except Exception:
+        pass
     logger.info("Application shut down")
 
 
@@ -118,7 +135,9 @@ app.add_middleware(
 # Autenticação
 app.add_middleware(
     AuthMiddleware,
-    access_token=settings.acess_token
+    access_token=settings.acess_token,
+    jwt_secret=settings.jwt_secret,
+    jwt_issuer=settings.jwt_issuer
 )
 
 # Rate Limiting será adicionado dinamicamente no lifespan
@@ -150,63 +169,356 @@ async def login_page():
 
 
 class LoginRequest(BaseModel):
-    token: str
+    email: Optional[str] = None
+    senha: Optional[str] = None
+    token: Optional[str] = None
 
 
 @app.post("/api/auth/login")
 async def login(request: LoginRequest):
     """Endpoint de login"""
-    if not settings.acess_token:
-        # Se não houver token configurado, permite qualquer token
-        return JSONResponse({
-            "success": True,
-            "message": "Login realizado com sucesso"
-        })
-    
-    if request.token == settings.acess_token:
-        response = JSONResponse({
-            "success": True,
-            "message": "Login realizado com sucesso"
-        })
-        # Define cookie com o token
+    if request.email and request.senha:
+        if not settings.jwt_secret:
+            raise HTTPException(status_code=500, detail="JWT_SECRET not configured")
+        user = await prisma_db.db.usuario.find_unique(where={"email": request.email})
+        if not user or not verify_password(request.senha, user.senhaHash):
+            raise HTTPException(status_code=401, detail="Credenciais inválidas")
+
+        token_data = create_access_token(
+            secret=settings.jwt_secret,
+            issuer=settings.jwt_issuer,
+            user_id=user.id,
+            group_id=user.grupoId,
+            level=user.nivel,
+            ttl_minutes=settings.jwt_access_ttl_minutes,
+        )
+        await prisma_db.db.accesstoken.create(
+            data={
+                "jti": token_data["jti"],
+                "expiresAt": token_data["expires_at"],
+                "usuarioId": user.id,
+            }
+        )
+
+        response = JSONResponse(
+            {
+                "access_token": token_data["token"],
+                "token_type": "bearer",
+                "expires_at": token_data["expires_at"].isoformat(),
+            }
+        )
+        response.set_cookie(
+            key="access_token",
+            value=token_data["token"],
+            httponly=True,
+            secure=settings.environment == "production",
+            samesite="lax",
+            max_age=settings.jwt_access_ttl_minutes * 60,
+        )
+        return response
+
+    if request.token:
+        if not settings.acess_token:
+            return JSONResponse({"success": True, "message": "Login realizado com sucesso"})
+        if request.token != settings.acess_token:
+            raise HTTPException(status_code=401, detail="Token inválido")
+        response = JSONResponse({"success": True, "message": "Login realizado com sucesso"})
         response.set_cookie(
             key="access_token",
             value=request.token,
             httponly=True,
-            secure=False,  # Em produção, usar True com HTTPS
+            secure=settings.environment == "production",
             samesite="lax",
-            max_age=86400 * 7  # 7 dias
+            max_age=86400 * 7,
         )
         return response
-    else:
-        raise HTTPException(status_code=401, detail="Token inválido")
+
+    raise HTTPException(status_code=422, detail="Informe email/senha ou token")
 
 
 @app.post("/api/auth/verify")
 async def verify_token(request: Request):
     """Verifica se o token é válido"""
-    # Se não houver token configurado, sempre retorna válido
-    if not settings.acess_token:
-        return {"valid": True}
-    
-    # Verifica token do cookie ou header
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
-    
-    # Verifica se o token é válido
-    is_valid = token and token == settings.acess_token
-    return {"valid": is_valid}
+
+    if not token:
+        return {"valid": False}
+
+    if settings.jwt_secret:
+        try:
+            payload = decode_access_token(token=token, secret=settings.jwt_secret, issuer=settings.jwt_issuer)
+            token_row = await prisma_db.db.accesstoken.find_unique(where={"jti": payload.get("jti")})
+            if not token_row or token_row.revokedAt is not None:
+                return {"valid": False}
+            expires_at = token_row.expiresAt
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at <= datetime.now(timezone.utc):
+                return {"valid": False}
+            return {"valid": True}
+        except Exception:
+            return {"valid": False}
+
+    if not settings.acess_token:
+        return {"valid": True}
+    return {"valid": token == settings.acess_token}
 
 
 @app.post("/api/auth/logout")
-async def logout():
+async def logout(request: Request):
     """Endpoint de logout"""
+    token = request.cookies.get("access_token")
+    if token and settings.jwt_secret:
+        try:
+            payload = decode_access_token(token=token, secret=settings.jwt_secret, issuer=settings.jwt_issuer)
+            await prisma_db.db.accesstoken.update(
+                where={"jti": payload.get("jti")},
+                data={"revokedAt": datetime.now(timezone.utc)},
+            )
+        except Exception:
+            pass
     response = JSONResponse({"success": True, "message": "Logout realizado"})
     response.delete_cookie("access_token")
     return response
+
+
+@app.get("/api/auth/me")
+async def me(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def _encrypt_sensitive_config(value: Any) -> Any:
+    if isinstance(value, dict):
+        encrypted: Dict[str, Any] = {}
+        for k, v in value.items():
+            key = str(k).lower()
+            if isinstance(v, str) and settings.encryption_key and (
+                key in {"password", "senha", "secret", "token", "api_key", "apikey"} or key.endswith("_key")
+            ):
+                encrypted[k] = "enc:" + encrypt_str(v, settings.encryption_key)
+            else:
+                encrypted[k] = _encrypt_sensitive_config(v)
+        return encrypted
+    if isinstance(value, list):
+        return [_encrypt_sensitive_config(v) for v in value]
+    return value
+
+
+def _pgvector_literal(values: List[float]) -> str:
+    return "[" + ",".join(str(float(v)) for v in values) + "]"
+
+
+class GrupoCreate(BaseModel):
+    nome: str = Field(min_length=1, max_length=120)
+    descricao: Optional[str] = Field(default=None, max_length=500)
+
+
+class GrupoUpdate(BaseModel):
+    nome: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    descricao: Optional[str] = Field(default=None, max_length=500)
+
+
+class UsuarioCreate(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    senha: str = Field(min_length=8, max_length=200)
+    nivel: str = Field(default="NORMAL")
+    grupoId: str
+
+
+class UsuarioUpdate(BaseModel):
+    email: Optional[str] = Field(default=None, min_length=5, max_length=320)
+    senha: Optional[str] = Field(default=None, min_length=8, max_length=200)
+    nivel: Optional[str] = None
+    grupoId: Optional[str] = None
+
+
+class AgenteCreate(BaseModel):
+    nome: str = Field(min_length=1, max_length=160)
+    configuracoes: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AgenteUpdate(BaseModel):
+    nome: Optional[str] = Field(default=None, min_length=1, max_length=160)
+    configuracoes: Optional[Dict[str, Any]] = None
+
+
+class EmbeddingUpsert(BaseModel):
+    vetor: List[float] = Field(min_length=1)
+
+
+class VectorSearchRequest(BaseModel):
+    vetor: List[float] = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=50)
+
+
+@app.post("/api/admin/grupos")
+async def admin_create_group(request: Request, body: GrupoCreate):
+    require_admin_geral(request)
+    grupo = await prisma_db.db.grupo.create(data={"nome": body.nome, "descricao": body.descricao})
+    return grupo
+
+
+@app.get("/api/admin/grupos")
+async def admin_list_groups(request: Request):
+    require_admin_geral(request)
+    return await prisma_db.db.grupo.find_many(order={"nome": "asc"})
+
+
+@app.patch("/api/admin/grupos/{grupo_id}")
+async def admin_update_group(request: Request, grupo_id: str, body: GrupoUpdate):
+    require_admin_geral(request)
+    data: Dict[str, Any] = {}
+    if body.nome is not None:
+        data["nome"] = body.nome
+    if body.descricao is not None:
+        data["descricao"] = body.descricao
+    if not data:
+        return await prisma_db.db.grupo.find_unique(where={"id": grupo_id})
+    return await prisma_db.db.grupo.update(where={"id": grupo_id}, data=data)
+
+
+@app.delete("/api/admin/grupos/{grupo_id}")
+async def admin_delete_group(request: Request, grupo_id: str):
+    require_admin_geral(request)
+    await prisma_db.db.grupo.delete(where={"id": grupo_id})
+    return {"deleted": True}
+
+
+@app.post("/api/admin/usuarios")
+async def admin_create_user(request: Request, body: UsuarioCreate):
+    require_admin_geral(request)
+    nivel = body.nivel
+    if nivel not in {"NORMAL", "ADMIN", "ADMIN_GERAL"}:
+        raise HTTPException(status_code=422, detail="Nivel inválido")
+    user = await prisma_db.db.usuario.create(
+        data={
+            "email": body.email,
+            "senhaHash": hash_password(body.senha),
+            "nivel": nivel,
+            "grupoId": body.grupoId,
+        }
+    )
+    return {"id": user.id, "email": user.email, "nivel": user.nivel, "grupoId": user.grupoId}
+
+
+@app.get("/api/admin/usuarios")
+async def admin_list_users(request: Request, grupoId: Optional[str] = None):
+    require_admin_geral(request)
+    where: Dict[str, Any] = {}
+    if grupoId:
+        where["grupoId"] = grupoId
+    users = await prisma_db.db.usuario.find_many(where=where, order={"email": "asc"})
+    return [{"id": u.id, "email": u.email, "nivel": u.nivel, "grupoId": u.grupoId} for u in users]
+
+
+@app.patch("/api/admin/usuarios/{usuario_id}")
+async def admin_update_user(request: Request, usuario_id: str, body: UsuarioUpdate):
+    require_admin_geral(request)
+    data: Dict[str, Any] = {}
+    if body.email is not None:
+        data["email"] = body.email
+    if body.senha is not None:
+        data["senhaHash"] = hash_password(body.senha)
+    if body.nivel is not None:
+        if body.nivel not in {"NORMAL", "ADMIN", "ADMIN_GERAL"}:
+            raise HTTPException(status_code=422, detail="Nivel inválido")
+        data["nivel"] = body.nivel
+    if body.grupoId is not None:
+        data["grupoId"] = body.grupoId
+    if not data:
+        user = await prisma_db.db.usuario.find_unique(where={"id": usuario_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"id": user.id, "email": user.email, "nivel": user.nivel, "grupoId": user.grupoId}
+    user = await prisma_db.db.usuario.update(where={"id": usuario_id}, data=data)
+    return {"id": user.id, "email": user.email, "nivel": user.nivel, "grupoId": user.grupoId}
+
+
+@app.delete("/api/admin/usuarios/{usuario_id}")
+async def admin_delete_user(request: Request, usuario_id: str):
+    require_admin_geral(request)
+    await prisma_db.db.usuario.delete(where={"id": usuario_id})
+    return {"deleted": True}
+
+
+@app.post("/api/grupo/agentes")
+async def group_create_agent(request: Request, body: AgenteCreate):
+    user = require_admin_grupo(request)
+    data = {
+        "nome": body.nome,
+        "configuracoes": _encrypt_sensitive_config(body.configuracoes),
+        "grupoId": user["grupoId"],
+        "criadoPorId": user["id"],
+    }
+    agente = await prisma_db.db.agente.create(data=data)
+    return agente
+
+
+@app.get("/api/grupo/agentes")
+async def group_list_agents(request: Request):
+    user = get_auth(request)
+    return await prisma_db.db.agente.find_many(where={"grupoId": user["grupoId"]}, order={"createdAt": "desc"})
+
+
+@app.patch("/api/grupo/agentes/{agente_id}")
+async def group_update_agent(request: Request, agente_id: str, body: AgenteUpdate):
+    user = require_admin_grupo(request)
+    agente = await prisma_db.db.agente.find_unique(where={"id": agente_id})
+    if not agente or agente.grupoId != user["grupoId"]:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    data: Dict[str, Any] = {}
+    if body.nome is not None:
+        data["nome"] = body.nome
+    if body.configuracoes is not None:
+        data["configuracoes"] = _encrypt_sensitive_config(body.configuracoes)
+    if not data:
+        return agente
+    return await prisma_db.db.agente.update(where={"id": agente_id}, data=data)
+
+
+@app.delete("/api/grupo/agentes/{agente_id}")
+async def group_delete_agent(request: Request, agente_id: str):
+    user = require_admin_grupo(request)
+    agente = await prisma_db.db.agente.find_unique(where={"id": agente_id})
+    if not agente or agente.grupoId != user["grupoId"]:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    await prisma_db.db.agente.delete(where={"id": agente_id})
+    return {"deleted": True}
+
+
+@app.post("/api/grupo/agentes/{agente_id}/embedding")
+async def group_set_agent_embedding(request: Request, agente_id: str, body: EmbeddingUpsert):
+    user = require_admin_grupo(request)
+    agente = await prisma_db.db.agente.find_unique(where={"id": agente_id})
+    if not agente or agente.grupoId != user["grupoId"]:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    await prisma_db.db.execute_raw(
+        'UPDATE "Agente" SET "vetorEmbedding" = $1::vector WHERE "id" = $2::uuid',
+        _pgvector_literal(body.vetor),
+        agente_id,
+    )
+    return {"updated": True}
+
+
+@app.post("/api/grupo/agentes/search")
+async def group_search_agents(request: Request, body: VectorSearchRequest):
+    user = get_auth(request)
+    rows = await prisma_db.db.query_raw(
+        'SELECT "id", "nome", "configuracoes", "grupoId", "criadoPorId", "createdAt", "updatedAt", ("vetorEmbedding" <=> $1::vector) AS score '
+        'FROM "Agente" WHERE "grupoId" = $2::uuid AND "vetorEmbedding" IS NOT NULL '
+        'ORDER BY "vetorEmbedding" <=> $1::vector ASC LIMIT $3',
+        _pgvector_literal(body.vetor),
+        user["grupoId"],
+        body.top_k,
+    )
+    return rows
 
 
 @app.get("/health")
