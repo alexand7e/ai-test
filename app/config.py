@@ -20,7 +20,7 @@ try:
         redis_stream_name: str = "agent_stream"
         acess_token: str = ""
         database_url: Optional[str] = None
-        jwt_secret: Optional[str] = None
+        jwt_secret: Optional[str] = "teste_jwt"
         jwt_issuer: str = "ai-agent-api"
         jwt_access_ttl_minutes: int = 60
         encryption_key: Optional[str] = None

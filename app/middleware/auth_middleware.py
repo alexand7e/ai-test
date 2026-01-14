@@ -42,7 +42,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         
         if is_public:
             return await call_next(request)
-        
+
         # Verifica autenticação via cookie ou header
         token = None
         
@@ -80,6 +80,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             status_code=status.HTTP_401_UNAUTHORIZED,
                             content={"detail": "Token expirado"}
                         )
+                    ### Bug
                     from starlette.responses import RedirectResponse
                     return RedirectResponse(url="/login", status_code=302)
 
@@ -100,6 +101,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if not token or (self.access_token and token != self.access_token):
+            ### Bug
             # Se for requisição de API, retorna 401
             if request.url.path.startswith("/api/") or request.url.path.startswith("/webhooks/"):
                 return JSONResponse(
@@ -107,8 +109,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Token de acesso inválido ou ausente"}
                 )
             # Se for página HTML, redireciona para login
-            from starlette.responses import RedirectResponse
-            return RedirectResponse(url="/login", status_code=302)
+            ### Bug
+            ## Fix: Não precisa redirecionar aqui
+            # from starlette.responses import RedirectResponse
+            # return RedirectResponse(url="/login", status_code=302)
         
         return await call_next(request)
 
