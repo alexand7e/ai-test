@@ -43,6 +43,9 @@ from datetime import datetime, timezone
 from app.security.permissions import get_auth, require_admin_geral, require_admin_grupo
 from app.security.crypto import encrypt_str
 
+
+from starlette.responses import RedirectResponse
+
 # Configurar logging
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -165,81 +168,45 @@ if os.path.exists(static_dir):
 @app.get("/")
 async def root(request: Request):
     """Serve a página inicial do chat (ou Setup se DB vazio)"""
-    return {"message": "Home"}
-    ### Check if setup is needed
-    #
-    #try:
-    #
-    #    #### Improve: verificar por cookie do navegador
-    #    #token = request.cookies.get("access_token")
-    #    #if not token:
-    #    user_count = await prisma_db.db.usuario.count()
-    #    if user_count == 0:
-    #        static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-    #        setup_path = os.path.join(static_dir, "setup.html")
-    #        if os.path.exists(setup_path):
-    #            return FileResponse(setup_path)
-    #        return {"message": "Setup required. Please create initial admin."}
-    #except Exception:
-    #    pass
-    #
-    #static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-    #index_path = os.path.join(static_dir, "index.html")
-    #if os.path.exists(index_path):
-    #    return FileResponse(index_path)
-    #return {"message": "AI Agent API - Acesse /static/index.html"}
 
+    #### Improve: verificar por cookie do navegador
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login")
 
-## Devido ao middleware essa rota nunca é alcançada
-@app.get("/singup")
-async def root():
-    """Serve a página inicial do chat (ou Setup se DB vazio)"""
-    # Check if setup is needed
-    try:
-        ### Bug
-        user_count = await prisma_db.db.usuario.count()
-        if user_count == 0:
-            static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-            setup_path = os.path.join(static_dir, "setup.html")
-            if os.path.exists(setup_path):
-                return FileResponse(setup_path)
-            return {"message": "Setup required. Please create initial admin."}
-    except Exception:
-        pass
-        
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return {"message": "AI Agent API - Acesse /static/index.html"}
 
+
+## Devido ao middleware essa rota nunca é alcançada
+@app.get("/singup")
+async def singup_page(request: Request):
+    """Serve a página inicial do chat (ou Setup se DB vazio)"""
+    token = request.cookies.get("access_token")
+    if token:
+        return RedirectResponse(url="/")
+
+    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+    setup_path = os.path.join(static_dir, "setup.html")
+    if os.path.exists(setup_path):
+        return FileResponse(setup_path)
+    return {"message": "Setup required. Please create initial admin."}
+
 @app.get("/login")
-async def login_page():
+async def login_page(request: Request):
     """Serve a página de login (ou Setup se DB vazio)"""
-    try:
-        user_count = await prisma_db.db.usuario.count()
-        if user_count == 0:
-            ### Bug
-
-            static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-            login_path = os.path.join(static_dir, "login.html")
-            if os.path.exists(login_path):
-                return FileResponse(login_path)
-            return {"message": "Login page not available"}
-
-            ## Não entendi esse redirect aqui, pois se não existe usuário ele deve ser redirecionado para um sing up por exemplo
-            # from starlette.responses import RedirectResponse
-            # return RedirectResponse(url="/")
-
-    except Exception:
-        pass
+    token = request.cookies.get("access_token")
+    if token:
+        return RedirectResponse(url="/")
 
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     login_path = os.path.join(static_dir, "login.html")
     if os.path.exists(login_path):
         return FileResponse(login_path)
     return {"message": "Login page not available"}
-
 
 class SetupRequest(BaseModel):
     admin_name: str = Field(min_length=1)
@@ -251,10 +218,6 @@ class SetupRequest(BaseModel):
 @app.post("/api/setup")
 async def setup_initial_admin(request: SetupRequest):
     """Endpoint para configuração inicial (apenas se DB vazio)"""
-    user_count = await prisma_db.db.usuario.count()
-    if user_count > 0:
-        raise HTTPException(status_code=403, detail="Setup already completed. Users exist.")
-
     try:
         # Create Default Group
         grupo = await prisma_db.db.grupo.create(
