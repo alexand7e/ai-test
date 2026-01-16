@@ -1,8 +1,7 @@
 """Middleware de rate limiting"""
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.infrastructure.redis_client import RedisClient
-import time
+from app.infrastructure.cache.redis_client import RedisClient
 import logging
 
 logger = logging.getLogger(__name__)
