@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from app.api.dependencies import get_container
+from app.core.container import Container
 from app.schemas.auth import LoginRequest, SetupRequest
 from app.security.jwt_service import create_access_token, decode_access_token
 
@@ -9,23 +11,22 @@ from app.core.config.config import settings
 
 from app.utils.logging import logger
 
-from app.infrastructure.database import prisma_db
 from app.security.passwords import hash_password, verify_password
 
 auth_router = APIRouter(tags=["authentication"])
 
 @auth_router.post("/api/setup")
-async def setup_initial_admin(request: SetupRequest):
+async def setup_initial_admin(request: SetupRequest, container: Container = Depends(get_container)):
     """Endpoint para configuração inicial (apenas se DB vazio)"""
     try:
-        grupo = await prisma_db.db.grupo.create(
+        grupo = await container.prisma_db.grupo.create(
             data={
                 "nome": request.group_name,
                 "descricao": "Grupo de administração do sistema"
             }
         )
          
-        admin_user = await prisma_db.db.usuario.create(
+        admin_user = await container.prisma_db.usuario.create(
             data={
                 "email": request.admin_email,
                 "senhaHash": hash_password(request.admin_password),
@@ -46,7 +47,7 @@ async def setup_initial_admin(request: SetupRequest):
             ttl_minutes=settings.jwt_access_ttl_minutes,
         )
 
-        await prisma_db.db.accesstoken.create(
+        await container.prisma_db.accesstoken.create(
             data={
                 "jti": token_data["jti"],
                 "expiresAt": token_data["expires_at"],
@@ -62,12 +63,12 @@ async def setup_initial_admin(request: SetupRequest):
 
 
 @auth_router.post("/api/auth/login")
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, container: Container = Depends(get_container)):
     """Endpoint de login"""
     if request.email and request.senha:
         if not settings.jwt_secret:
             raise HTTPException(status_code=500, detail="JWT_SECRET not configured")
-        user = await prisma_db.db.usuario.find_unique(where={"email": request.email})
+        user = await container.prisma_db.usuario.find_unique(where={"email": request.email})
         if not user or not verify_password(request.senha, user.senhaHash):
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
@@ -79,7 +80,7 @@ async def login(request: LoginRequest):
             level=user.nivel,
             ttl_minutes=settings.jwt_access_ttl_minutes,
         )
-        await prisma_db.db.accesstoken.create(
+        await container.prisma_db.accesstoken.create(
             data={
                 "jti": token_data["jti"],
                 "expiresAt": token_data["expires_at"],
@@ -138,7 +139,7 @@ async def verify_token(request: Request):
     if settings.jwt_secret:
         try:
             payload = decode_access_token(token=token, secret=settings.jwt_secret, issuer=settings.jwt_issuer)
-            token_row = await prisma_db.db.accesstoken.find_unique(where={"jti": payload.get("jti")}) # type: ignore
+            token_row = await container.prisma_db.accesstoken.find_unique(where={"jti": payload.get("jti")}) # type: ignore
             if not token_row or token_row.revokedAt is not None:
                 return {"valid": False}
             expires_at = token_row.expiresAt
@@ -156,13 +157,13 @@ async def verify_token(request: Request):
 
 
 @auth_router.post("/api/auth/logout")
-async def logout(request: Request):
+async def logout(request: Request, container: Container = Depends(get_container)):
     """Endpoint de logout"""
     token = request.cookies.get("access_token")
     if token and settings.jwt_secret:
         try:
             payload = decode_access_token(token=token, secret=settings.jwt_secret, issuer=settings.jwt_issuer)
-            await prisma_db.db.accesstoken.update(
+            await container.prisma_db.accesstoken.update(
                 where={"jti": payload.get("jti")}, # type: ignore
                 data={"revokedAt": datetime.now(timezone.utc)},
             )

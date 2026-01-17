@@ -1,4 +1,3 @@
-from app.core.agent_loader import AgentLoader
 from app.core.config.config import settings
 
 import asyncio
@@ -7,12 +6,7 @@ import httpx
 
 import time
 
-from app.domain.services.agent_service import AgentService
-from app.domain.services.metrics_service import MetricsService
-from app.domain.services.rag_service import RAGService
-from app.infrastructure.cache.redis_client import RedisClient
-from app.infrastructure.llm.openai_client import OpenAIClient
-from app.infrastructure.vector_store.qdrant_client import QdrantClient
+from app.core.container import Container
 from app.schemas.agent import AgentResponse
 from app.schemas.webhook import WebhookMessage
 
@@ -24,23 +18,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Remove main()
+# Remove criação de dependências
+# Worker só executa lógica de consumo
 class Worker:
     """Worker assíncrono para processar jobs"""
     
-    def __init__(self):
-        self.agent_loader = AgentLoader()
-        self.redis = RedisClient()
-        self.qdrant = QdrantClient()
-        self.openai = OpenAIClient()
-        self.rag_service = RAGService(self.redis, self.openai, qdrant_client=self.qdrant)
-        self.agent_service = AgentService(self.redis, self.openai, self.rag_service)
-        self.metrics_service = MetricsService(self.redis)
+    def __init__(self, container: Container):
+        self.container = container
+        self.redis = container.redis_client
+        self.agent_loader = container.agent_loader
+        self.agent_service = container.agent_service
+        self.metrics_service = container.metrics_service
+        self.qdrant = container.qdrant_client
         self.running = False
     
     async def start(self):
         """Inicia o worker"""
-        await self.redis.connect()
-        await self.qdrant.connect()
         self.running = True
         logger.info("Worker started")
         
@@ -56,7 +50,7 @@ class Worker:
             logger.info("Worker shutting down...")
             self.running = False
             await self.redis.disconnect()
-            await self.qdrant.disconnect()
+            await self.qdrant.disconnect() # type: ignore
     
     async def consume_loop(self, consumer_name: str):
         """Loop principal de consumo de jobs"""
@@ -127,7 +121,7 @@ class Worker:
             # Publica no canal pub/sub
             await self.redis.publish(
                 f"agent_response:{agent_id}",
-                response.dict()
+                response.model_dump()
             )
             
             # Confirma processamento
@@ -160,19 +154,9 @@ class Worker:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 await client.post(
                     url,
-                    json=response.dict(),
+                    json=response.model_dump(),
                     headers={"Content-Type": "application/json"}
                 )
             logger.info(f"Webhook response sent to {url}")
         except Exception as e:
             logger.error(f"Error sending webhook response to {url}: {e}")
-
-
-async def main():
-    """Entry point do worker"""
-    worker = Worker()
-    await worker.start()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

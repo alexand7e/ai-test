@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from prisma import Prisma # type: ignore
+
 from app.infrastructure.cache.redis_client import RedisClient
+from app.infrastructure.database.prisma_db import prisma_connect
 from app.infrastructure.vector_store.qdrant_client import QdrantClient
 from app.infrastructure.llm.openai_client import OpenAIClient
 
@@ -13,6 +16,8 @@ from app.domain.services.data_analysis_service import DataAnalysisService
 
 from app.core.agent_loader import AgentLoader
 
+# Todas as instancias clobais anteriormente no main.py, agora ficam aqui
+# Dessa forma podem ser acessadas via Dependency Injection aplicada no dependencies.py
 @dataclass
 class Container:
     """"Dependency Injection Container"""
@@ -21,6 +26,7 @@ class Container:
     redis_client: RedisClient
     qdrant_client: Optional[QdrantClient]
     openai_client: OpenAIClient
+    prisma_db: Prisma
 
     # services
     agent_service: AgentService
@@ -37,6 +43,10 @@ class Container:
     @classmethod
     async def create(cls) -> "Container":
         """Factory method para criar container"""
+        
+        prisma_db = Prisma()
+        await prisma_connect(prisma_db)
+
         redis_client = RedisClient()
         await redis_client.connect()
         
@@ -61,10 +71,11 @@ class Container:
         
         metrics_service = MetricsService(redis_client)
         
-        agent_loader = AgentLoader()
+        agent_loader = AgentLoader(prisma_db)
         await agent_loader.load_all_agents()
         
         return cls(
+            prisma_db=prisma_db,
             redis_client=redis_client,
             qdrant_client=qdrant_client,
             openai_client=openai_client,
@@ -79,8 +90,12 @@ class Container:
 
     async def cleanup(self):
         """Cleanup de recursos"""
-        await self.redis_client.disconnect()
+        if self.prisma_db:
+            await self.prisma_db.disconnect()
+
+        if self.redis_client:
+            await self.redis_client.disconnect()
+
         if self.qdrant_client:
             await self.qdrant_client.disconnect()
-
 

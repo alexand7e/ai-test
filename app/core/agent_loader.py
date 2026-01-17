@@ -1,3 +1,4 @@
+from prisma import Prisma
 import yaml
 import json
 import re
@@ -6,7 +7,6 @@ from typing import Dict, Optional, Any
 import logging
 
 from app.core.config.config import settings
-from app.infrastructure.database import prisma_db
 from app.schemas.agent import AgentConfig
 from app.security.crypto import decrypt_str
 
@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 class AgentLoader:
     """Carrega e gerencia configurações de agentes"""
     
-    def __init__(self, agents_dir: Optional[str] = None):
+    def __init__(self, prisma_db: Prisma, agents_dir: Optional[str] = None):
+        self.prisma_db = prisma_db
         self.agents_dir = Path(agents_dir or settings.agents_dir)
         self.agents: Dict[str, AgentConfig] = {}
         self.webhook_map: Dict[str, str] = {}  # webhook_name -> agent_id
@@ -66,7 +67,8 @@ class AgentLoader:
     async def _load_from_db(self):
         """Busca agentes no banco de dados Prisma"""
         try:
-            db_agents = await prisma_db.db.agente.find_many()
+            db_agents = await self.prisma_db.agente.find_many()
+            
             for db_agent in db_agents:
                 try:
                     # Decrypt and construct config

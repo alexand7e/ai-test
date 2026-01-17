@@ -11,40 +11,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.dependencies import get_container
 
 from contextlib import asynccontextmanager
-import logging
-import os
-# Rate limiting será implementado se necessário
 
 from app.infrastructure.cache.redis_client import RedisClient
-from app.infrastructure.database import prisma_db
 from app.middleware.rate_limiter import RateLimiterMiddleware
 from app.middleware.auth_middleware import AuthMiddleware
-from app.infrastructure.database.migration_runner import apply_migrations
 
 from app.core.container import Container
 from app.core.config.config import settings
 
-# Configurar logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.database_url:
-        os.environ["DATABASE_URL"] = settings.database_url
-        await prisma_db.connect()
-        if settings.migrate_on_startup:
-            await apply_migrations(prisma_db.db)
-
     container = await Container.create()
     app.state.container = container
 
     yield
 
-    await prisma_db.disconnect()
     await container.cleanup()
 
 app = FastAPI(
